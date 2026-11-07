@@ -1,4 +1,4 @@
-
+from services.grants_api import get_grants
 import streamlit as st
 
 def show_search():
@@ -37,9 +37,32 @@ def show_search():
         value=70
     )
 
+  
+
     if st.button("Search Grants", type="primary"):
-        st.write("Search query:", query)
-        st.write("Deadline:", deadline)
-        st.write("Eligibility:", eligibility)
-        st.write("Minimum award:", reward)
-        st.write("Minimum match score:", match_score)
+        try:
+            with st.spinner("Searching Grants.gov..."):
+                grants = get_grants(query or "water", 20)
+
+            st.success(f"Retrieved {len(grants)} grant records")
+
+            for grant in grants:
+                title = grant.get("title", "Untitled Grant")
+                agency = grant.get("agency", "Unknown Agency")
+                deadline = grant.get("closeDate", "Not specified")
+                opportunity_id = grant.get("id")
+
+                with st.container(border=True):
+                    st.subheader(title)
+                    st.write(f"**Agency:** {agency}")
+                    st.write(f"**Deadline:** {deadline}")
+
+                    if opportunity_id:
+                        st.link_button(
+                            "View Official Opportunity",
+                            f"https://www.grants.gov/search-results-detail/{opportunity_id}"
+                        )
+
+        except Exception as error:
+            st.error(f"Unable to retrieve grants: {error}")
+
