@@ -2,6 +2,8 @@
 import re
 from services.verified_goals import VERIFIED_GOALS
 
+DETAIL_SUPPORTED_TERMS = {"infrastructure", "utilities"}
+
 
 def _tokens(value):
     return set(re.findall(r"[a-z0-9]+", str(value).lower()))
@@ -23,15 +25,17 @@ def rank_grants(grants, agency_name, detail_cache=None):
         if profile:
             title = str(row.get("title") or "")
             details = detail_cache.get(str(row.get("id")), {})
-            description = " ".join(str(part or "") for part in (
-                row.get("synopsis"), row.get("description"), details.get("description")
-            ))
-            text = f"{title} {description}".lower()
+            summary_text = f"{title} {row.get('synopsis') or ''} {row.get('description') or ''}".lower()
+            detail_text = str(details.get("description") or "").lower()
+            text = f"{summary_text} {detail_text}"
             tokens = _tokens(text)
             matched = []
             for goal in profile["goals"]:
                 found = [term for term in goal["terms"] if
-                         (term in text if " " in term else term in tokens)]
+                         (term in text if " " in term else (
+                             term in tokens
+                             and (term not in DETAIL_SUPPORTED_TERMS or term in detail_text)
+                         ))]
                 if found:
                     matched.append({"goal": goal["text"], "page": goal["page"], "keywords": found})
             # A conservative topic-overlap heuristic; no false precision about

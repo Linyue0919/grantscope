@@ -7,7 +7,7 @@ def screen_eligibility(details, agency_name):
     notes = str(details.get("eligibility_description") or "")
     types = " ".join(details.get("applicant_types") or [])
     description = str(details.get("description") or "")
-    if not notes.strip() and not types.strip():
+    if not notes.strip() and not types.strip() and not description.strip():
         return {"status": "Needs Review", "reason": "No applicant eligibility information returned."}
 
     # Narrow evidence rule for the observed EPA tribal-only opportunity.
