@@ -4,6 +4,29 @@ The search endpoint returns summary records, not complete eligibility or award
 details. Never treat a search hit as proof of agency eligibility.
 """
 import requests
+from html import unescape
+from html.parser import HTMLParser
+
+
+class _TextOnly(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+
+    def handle_data(self, data):
+        self.parts.append(data)
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("p", "br", "li", "div"):
+            self.parts.append(" ")
+
+
+def plain_official_text(value):
+    """Remove HTML markup from Grants.gov text without rendering it as HTML."""
+    parser = _TextOnly()
+    parser.feed(str(value or ""))
+    parser.close()
+    return " ".join(unescape("".join(parser.parts)).split())
 
 API_URL = "https://api.grants.gov/v1/api/search2"
 
@@ -109,7 +132,7 @@ def get_grant_details(opportunity_id):
         "award_floor": _amount(synopsis.get("awardFloor")),
         "award_ceiling": _amount(synopsis.get("awardCeiling")),
         "applicant_types": [t for t in types if t],
-        "eligibility_description": str(synopsis.get("applicantEligibilityDesc") or "").strip(),
-        "description": str(synopsis.get("synopsisDesc") or synopsis.get("forecastDesc") or "").strip(),
+        "eligibility_description": plain_official_text(synopsis.get("applicantEligibilityDesc")),
+        "description": plain_official_text(synopsis.get("synopsisDesc") or synopsis.get("forecastDesc")),
         "detail_source_url": f"https://www.grants.gov/search-results-detail/{identifier}",
     }
