@@ -72,6 +72,10 @@ def show_search():
             help="Unknown dates cannot be confirmed to fall within the window.",
         )
 
+    show_ineligible = st.checkbox(
+        "Show ineligible grants (audit view)", value=False,
+        help="By default, hide grants confirmed ineligible for direct application. Unchecked grants remain visible as Needs Review.",
+    )
     min_award = st.number_input(
         "Minimum verified award ceiling ($; 0 = no filter)",
         min_value=0, step=50000, value=0,
@@ -136,6 +140,15 @@ def show_search():
             and detail_cache[str(g.get("id"))]["award_ceiling"] >= min_award
         ]
         st.caption("Award filter applies only to opportunities with loaded, verified detail records; other results are excluded, not treated as ineligible.")
+    ineligible_ids = {
+        str(g.get("id")) for g in matching
+        if str(g.get("id")) in detail_cache
+        and screen_eligibility(detail_cache[str(g.get("id"))], prefs["agency"])["status"] == "Ineligible"
+    }
+    if not show_ineligible:
+        matching = [g for g in matching if str(g.get("id")) not in ineligible_ids]
+        if ineligible_ids:
+            st.info(f"{len(ineligible_ids)} confirmed ineligible grant(s) hidden. Turn on 'Show ineligible grants (audit view)' to inspect them.")
     ranked = rank_grants(matching, prefs["agency"])
     if ranked and not ranked[0]["plan_verified"]:
         st.info("No verified strategic goals have been extracted for this agency yet. Results are shown without a match score; eligibility still needs human review.")
@@ -167,6 +180,11 @@ def show_search():
                     try:
                         with st.spinner("Loading official Grants.gov details..."):
                             detail_cache[detail_key] = get_grant_details(opportunity_id)
+                        if (
+                            not show_ineligible
+                            and screen_eligibility(detail_cache[detail_key], prefs["agency"])["status"] == "Ineligible"
+                        ):
+                            st.rerun()
                     except GrantsAPIError as exc:
                         st.error(str(exc))
                 details = detail_cache.get(detail_key)
