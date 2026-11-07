@@ -3,7 +3,7 @@ from datetime import date, datetime
 import streamlit as st
 
 from services.grants_api import get_grants, get_grant_details, GrantsAPIError
-from modules.profile import get_preferences
+from services.agency_directory import AGENCIES
 from services.matching import rank_grants
 from services.eligibility import screen_eligibility
 
@@ -44,16 +44,8 @@ def filter_by_deadline(grants, deadline_days, include_unknown=False, today=None)
 def show_search():
     st.header("Search Federal Grants")
     st.write("Discover live federal funding opportunities for NC agencies.")
-    prefs = get_preferences()
-    st.info(f'Current agency: {prefs["agency"]}. Search defaults come from Agency Profile.')
-
-    signature = (prefs["agency"], tuple(prefs["priorities"]), prefs["deadline_days"])
-    if st.session_state.get("search_profile_signature") != signature:
-        st.session_state["search_profile_signature"] = signature
-        st.session_state["search_deadline_days"] = int(prefs["deadline_days"])
-        st.session_state["search_query"] = " ".join(prefs["priorities"][:1]).lower()
-        st.session_state.pop("search_last_results", None)
-
+    st.caption("Search is independent of saved Profile preferences. Choose filters for this search.")
+    agency = st.selectbox("Agency to evaluate", AGENCIES, key="search_agency")
     query = st.text_input(
         "Search opportunities",
         key="search_query",
@@ -63,8 +55,8 @@ def show_search():
     with col1:
         deadline_days = st.number_input(
             "Closing within (days)", min_value=1, max_value=365,
-            step=1, key="search_deadline_days",
-            help="Override your saved Profile deadline for this search.",
+            step=1, value=30, key="search_deadline_days",
+            help="Only affects this Search page.",
         )
     with col2:
         include_unknown = st.checkbox(
@@ -85,16 +77,15 @@ def show_search():
         min_value=0, step=50000, value=0,
         help="Applies only to opportunities whose official details you have loaded. Unknown amounts are not assumed to qualify.",
     )
-    st.caption(
-        f'Profile preferences: minimum award ${prefs["minimum_award"]:,}; '
-        f'minimum match score {prefs["minimum_match_score"]}/100. '
-        "These are NOT active filters: award amounts and agency eligibility "
-        "need official detail verification; match scoring needs a separate model."
+    min_match_score = st.slider(
+        "Minimum strategic match score", min_value=0, max_value=100,
+        value=0, step=1,
+        help="Prototype keyword-overlap score. Unscored agencies are kept visible and labeled.",
     )
 
     if st.button("Search Grants", type="primary"):
         if not query.strip():
-            st.warning("Enter a keyword or choose a strategic priority in Profile.")
+            st.warning("Enter a keyword to search Grants.gov.")
             st.session_state.pop("search_last_results", None)
             return
         try:
@@ -168,7 +159,7 @@ def show_search():
     ineligible_ids = {
         str(g.get("id")) for g in matching
         if str(g.get("id")) in detail_cache
-        and screen_eligibility(detail_cache[str(g.get("id"))], prefs["agency"])["status"] == "Ineligible"
+        and screen_eligibility(detail_cache[str(g.get("id"))], agency)["status"] == "Ineligible"
     }
     if not show_ineligible:
         matching = [g for g in matching if str(g.get("id")) not in ineligible_ids]
@@ -178,6 +169,7 @@ def show_search():
     zero_evidence = sum(g["match_score"] == 0 for g in ranked)
     if not show_zero_matches:
         ranked = [g for g in ranked if g["match_score"] != 0]
+    ranked = [g for g in ranked if g["match_score"] is None or g["match_score"] >= min_match_score]
         if zero_evidence:
             st.info(f"{zero_evidence} zero-evidence result(s) hidden. Turn on 'Show zero-evidence matches (audit view)' to inspect them. These are not proven irrelevant.")
     if not ranked:
