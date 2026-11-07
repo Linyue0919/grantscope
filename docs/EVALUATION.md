@@ -65,3 +65,13 @@ python -m streamlit run app.py
 Then select NC DEQ, search for `water`, load official details for the Water Resources Research Act opportunity, and check whether **Ineligible for direct application** appears. Search for `recovery` and confirm that the endangered-species Recovery Land Acquisition opportunity does **not** match the disaster-recovery goal. Note that other DEQ goals could still match a different opportunity for independent reasons. Save screenshots and test output before marking E-001/E-002 as verified.
 
 **Scope caveat:** The eligibility rule recognizes one explicit exclusion pattern only; it does not establish general applicant eligibility. The semantic matcher remains a transparent keyword heuristic, not a validated AI semantic model.
+
+## Batch screening iteration — November 7, 2026
+
+**Change:** Added an explicit `Screen next 10 grants using official eligibility details` action to Search. The app fetches details for at most 10 previously unscreened candidates per click, caches successful responses, reports the number checked, and retains unknown/error cases as Needs Review. Confirmed ineligible results are hidden by default unless audit view is enabled.
+
+**Commit:** `f5e2cd8`.
+
+**Verification status:** **Not yet locally tested.** Confirm the batch button loads official details, that progress counts update, that confirmed ineligible results disappear by default, and that audit view restores them. Inspect terminal for errors. This is bounded manual batch screening, **not** unattended or exhaustive auto-classification; the classifier still recognizes a narrow explicit-exclusion pattern.
+
+**Future evaluation:** Measure official detail coverage, API failures, false positives, and false negatives on a manually labeled sample. Avoid claiming 100% coverage.
