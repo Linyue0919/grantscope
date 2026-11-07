@@ -10,6 +10,7 @@ from services.matching import rank_grants
 from services.eligibility import screen_eligibility
 from services.verified_goals import VERIFIED_GOALS
 from services.ai_review import review_grant, AIReviewError
+from services.grant_store import LocalGrantStore
 
 
 def parse_close_date(value):
@@ -200,7 +201,10 @@ def decision_csv(grants, decisions):
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     for grant in grants:
-        decision = decisions.get(str(grant.get("id")), {})
+        decision = decisions.get(
+            f"{grant.get('_agency_namespace', '')}::{grant.get('id')}",
+            decisions.get(str(grant.get("id")), {}),
+        )
         writer.writerow({
             "opportunity_id": grant.get("id") or "",
             "title": grant.get("title") or "Untitled Grant",
@@ -225,6 +229,11 @@ def show_search():
     st.header("Search Federal Grants")
     st.write("Discover live federal funding opportunities for NC agencies.")
     st.caption("Search is independent of saved Profile preferences. Choose filters for this search.")
+    store = LocalGrantStore()
+    saved_records = {
+        f"{record['agency']}::{record['opportunity_id']}": record
+        for record in store.list_records()
+    }
     agency = st.selectbox("Agency to evaluate", AGENCIES, key="search_agency")
     st.caption("All 33 North Carolina agency directory options are preserved. Strategic goals are shown only where verified.")
     query = st.text_input(
@@ -366,6 +375,7 @@ def show_search():
     st.caption(f"Official detail coverage: {screened_count}/{len(matching)} candidates. Unscreened results are not confirmed eligible.")
     ranked = rank_grants(matching, agency, detail_cache=detail_cache)
     for grant in ranked:
+        grant["_agency_namespace"] = agency
         summary = eligibility_summary(
             detail_cache.get(str(grant.get("id"))), agency
         )
@@ -408,6 +418,12 @@ def show_search():
     if not ranked:
         st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
     decisions = st.session_state.setdefault("grant_decisions", {})
+    for key, record in saved_records.items():
+        if record.get("decision") or record.get("notes"):
+            decisions[key] = {
+                "decision": record.get("decision", ""),
+                "notes": record.get("notes", ""),
+            }
     missing_deadline = sum(parse_close_date(grant.get("closeDate")) is None for grant in ranked)
     missing_ceiling = sum(grant.get("_award_ceiling") is None for grant in ranked)
     unknown_status = sum(grant_status(grant) == "Unknown" for grant in ranked)
@@ -416,7 +432,7 @@ def show_search():
     st.write(
         f"{len(ranked)} opportunities shown · "
         f"{sum(grant.get('_eligibility_status') == 'Ineligible' for grant in ranked)} confirmed exclusions · "
-        f"{sum(str(grant.get('id')) in decisions for grant in ranked)} decisions saved"
+        f"{sum((agency + '::' + str(grant.get('id'))) in decisions for grant in ranked)} decisions saved"
     )
     with st.expander("Data quality details"):
         st.caption(
@@ -446,7 +462,10 @@ def show_search():
         award_ceiling = grant.get("_award_ceiling")
         total_funding = official_total_funding(grant, details)
         decision_key = str(opportunity_id)
-        saved = decisions.get(decision_key, {})
+        workspace_key = f"{agency}::{decision_key}"
+        saved = decisions.get(workspace_key, {})
+        saved_record = saved_records.get(workspace_key)
+        bookmarked = saved_record is not None
         with st.container(border=True):
             st.subheader(title)
             st.write(f"**Federal agency:** {federal_agency_name}")
@@ -478,8 +497,37 @@ def show_search():
                 if not decision:
                     st.warning("Choose Pursue, Maybe, or Pass before saving.")
                 else:
-                    decisions[decision_key] = {"decision": decision, "notes": notes.strip()}
+                    decision_data = {"decision": decision, "notes": notes.strip()}
+                    decisions[workspace_key] = decision_data
+                    store.save(
+                        agency, decision_key,
+                        {
+                            **decision_data,
+                            "title": title,
+                            "federal_agency": federal_agency_name,
+                            "close_date": grant.get("closeDate"),
+                            "official_url": f"https://www.grants.gov/search-results-detail/{opportunity_id}",
+                        },
+                    )
                     st.success("Decision saved for this session.")
+            if st.button(
+                "Remove from My Grants" if bookmarked else "Save to My Grants",
+                key=f"bookmark_{decision_key}",
+            ):
+                if bookmarked:
+                    store.remove(agency, decision_key)
+                    saved_records.pop(workspace_key, None)
+                else:
+                    store.save(
+                        agency, decision_key,
+                        {
+                            "title": title,
+                            "federal_agency": federal_agency_name,
+                            "close_date": grant.get("closeDate"),
+                            "official_url": f"https://www.grants.gov/search-results-detail/{opportunity_id}",
+                        },
+                    )
+                st.rerun()
             if opportunity_id:
                 detail_key = str(opportunity_id)
                 if st.button("Load official award & eligibility details", key=f"detail_{detail_key}"):

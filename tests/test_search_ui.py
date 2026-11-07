@@ -9,6 +9,9 @@ from modules.search import (
     sort_results,
 )
 from services.agency_directory import AGENCIES
+from services.calendar_export import grants_to_ics
+from services.grant_store import LocalGrantStore
+from tempfile import TemporaryDirectory
 
 
 class SearchPresentationTests(unittest.TestCase):
@@ -130,6 +133,36 @@ class SearchPresentationTests(unittest.TestCase):
         self.assertIn("total_program_funding", content)
         self.assertIn("Maybe", content)
         self.assertIn("Verify NOFO", content)
+
+    def test_persistent_store_namespaces_and_removes_records(self):
+        with TemporaryDirectory() as directory:
+            store = LocalGrantStore(f"{directory}/grants.json")
+            store.save("Agency A", "7", {
+                "title": "Official title", "decision": "Pursue", "notes": "Review"
+            })
+            store.save("Agency B", "7", {"title": "Other title"})
+            self.assertEqual(store.get("Agency A", "7")["decision"], "Pursue")
+            self.assertEqual(len(store.list_records()), 2)
+            store.save("Agency A", "7", {"title": "Do not replace"})
+            self.assertEqual(store.get("Agency A", "7")["title"], "Official title")
+            self.assertTrue(store.remove("Agency A", "7"))
+            self.assertIsNone(store.get("Agency A", "7"))
+            self.assertEqual(len(store.list_records()), 1)
+
+    def test_calendar_export_skips_missing_or_invalid_deadlines(self):
+        content = grants_to_ics([
+            {
+                "agency": "DEQ", "opportunity_id": "1", "title": "Water",
+                "close_date": "12/31/2026",
+                "official_url": "https://www.grants.gov/opportunity/1",
+            },
+            {"agency": "DEQ", "opportunity_id": "2", "title": "Unknown"},
+            {"agency": "DEQ", "opportunity_id": "3", "title": "Invalid", "close_date": "soon"},
+        ])
+        self.assertIn("DTSTART;VALUE=DATE:20261231", content)
+        self.assertIn("SUMMARY:Water", content)
+        self.assertNotIn("SUMMARY:Unknown", content)
+        self.assertNotIn("SUMMARY:Invalid", content)
 
 
 if __name__ == "__main__":
