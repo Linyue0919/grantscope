@@ -1,36 +1,15 @@
 import streamlit as st
+from services.agency_directory import AGENCIES, SOURCE_URL
 
 # Initial agency directory, not a claim of complete or verified coverage.
 # Custom entry makes the prototype usable by agencies not listed here.
-AGENCIES = [
-    "NC Department of Administration",
-    "NC Department of Adult Correction",
-    "NC Department of Agriculture and Consumer Services",
-    "NC Department of Commerce",
-    "NC Department of Environmental Quality",
-    "NC Department of Health and Human Services",
-    "NC Department of Information Technology",
-    "NC Department of Insurance",
-    "NC Department of Justice",
-    "NC Department of Labor",
-    "NC Department of Military and Veterans Affairs",
-    "NC Department of Natural and Cultural Resources",
-    "NC Department of Public Instruction",
-    "NC Department of Public Safety",
-    "NC Department of Revenue",
-    "NC Department of State Treasurer",
-    "NC Department of Transportation",
-    "NC Department of the Secretary of State",
-    "NC Office of State Budget and Management",
-    "NC Office of State Human Resources",
-]
 CUSTOM_AGENCY = "Other agency / enter manually"
 PRIORITIES = [
     "Clean Water", "Climate Resilience", "Transportation",
     "Rural Health", "Workforce Development", "Education",
 ]
 DEFAULT_PREFERENCES = {
-    "agency": "NC Department of Environmental Quality",
+    "agency": "Department of Environmental Quality",
     "priorities": ["Clean Water", "Climate Resilience"],
     "deadline_days": 15,
     "minimum_award": 100000,
@@ -52,6 +31,7 @@ def get_preferences():
 def show_profile():
     st.header("Agency Profile")
     st.write("Personalize federal grant discovery for your agency.")
+    st.caption(f"{len(AGENCIES)} official OSBM strategic-plan directory entries. [View OSBM directory]({SOURCE_URL})")
     prefs = get_preferences()
 
     saved_agency = prefs.get("agency", AGENCIES[0])
@@ -117,7 +97,7 @@ def show_profile():
         st.success("Preferences saved! Open Search to use your updated defaults.")
 
     st.caption(
-        "This is a starter directory, not a complete verified NC agency registry. "
+         "This list covers the entries on the OSBM strategic-plan directory, not every possible NC public body. "
         "Adding an agency does not mean its strategic plan has been ingested or that "
         "its grant eligibility has been verified. Preferences last for this Streamlit "
         "session only. Award and match-score filters are not yet active; email "
