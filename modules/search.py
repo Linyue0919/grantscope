@@ -6,6 +6,8 @@ from services.grants_api import get_grants, get_grant_details, GrantsAPIError
 from services.agency_directory import AGENCIES
 from services.matching import rank_grants
 from services.eligibility import screen_eligibility
+from services.verified_goals import VERIFIED_GOALS
+from services.ai_review import review_grant, AIReviewError
 
 
 def parse_close_date(value):
@@ -229,6 +231,35 @@ def show_search():
                     if details["description"]:
                         with st.expander("Official opportunity description"):
                             st.write(details["description"])
+                # AI is explicitly opt-in and only runs after official details are loaded.
+                # Cache by agency + opportunity, not by opportunity alone.
+                if details and agency in VERIFIED_GOALS:
+                    review_key = f"{agency}:{detail_key}"
+                    reviews = st.session_state.setdefault("ai_grant_reviews", {})
+                    if st.button("Analyze with Azure AI (one paid request)", key=f"ai_{review_key}"):
+                        try:
+                            with st.spinner("Analyzing official evidence with Azure OpenAI..."):
+                                reviews[review_key] = review_grant(
+                                    agency, VERIFIED_GOALS[agency], grant, details, st.secrets
+                                )
+                        except AIReviewError as exc:
+                            st.error(str(exc))
+                    if review_key in reviews:
+                        review = reviews[review_key]
+                        st.write("**AI-assisted review (not an eligibility determination)**")
+                        st.write(review["relevance_summary"])
+                        if review["supported_goal_pages"]:
+                            st.caption("Referenced strategic-plan pages: " + ", ".join(
+                                str(p) for p in review["supported_goal_pages"]
+                            ) + " (check against the source plan)")
+                        for risk in review["eligibility_risks"]:
+                            st.warning("Eligibility risk: " + risk)
+                        for missing in review["missing_information"]:
+                            st.caption("Needs verification: " + missing)
+                        st.write("**Next step:** " + review["recommended_next_step"])
+                        st.caption("AI-generated analysis may contain errors. Confirm all claims against the official sources.")
+                elif details:
+                    st.caption("AI analysis requires verified agency strategic goals.")
                 st.link_button(
                     "View Official Opportunity",
                     f"https://www.grants.gov/search-results-detail/{opportunity_id}",
