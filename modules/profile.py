@@ -30,7 +30,7 @@ def get_preferences():
 
 def show_profile():
     st.header("Agency Profile")
-    st.write("Personalize federal grant discovery for your agency.")
+    st.write("Set agency preferences for personalized Dashboard recommendations. Search has its own filters.")
     st.caption(f"{len(AGENCIES)} official OSBM strategic-plan directory entries. [View OSBM directory]({SOURCE_URL})")
     prefs = get_preferences()
 
@@ -93,13 +93,12 @@ def show_profile():
             "minimum_match_score": int(minimum_match_score),
             "notification": notification,
         }
-        st.session_state.pop("search_profile_signature", None)
-        st.success("Preferences saved! Open Search to use your updated defaults.")
+        st.success("Preferences saved for personalized Dashboard recommendations. Search has independent filters.")
 
     st.caption(
          "This list covers the entries on the OSBM strategic-plan directory, not every possible NC public body. "
         "Adding an agency does not mean its strategic plan has been ingested or that "
         "its grant eligibility has been verified. Preferences last for this Streamlit "
-        "session only. Award and match-score filters are not yet active; email "
+        "session only. Dashboard integration is pending; email "
         "notifications are not active."
     )
