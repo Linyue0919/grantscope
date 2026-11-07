@@ -132,6 +132,27 @@ def show_search():
         st.warning("No results in this deadline window. Try more days or a broader keyword.")
 
     detail_cache = st.session_state.setdefault("grant_detail_cache", {})
+    # Explicitly user-triggered bounded screening, not 100 background API calls.
+    unscreened = [
+        g for g in matching
+        if g.get("id") and str(g["id"]) not in detail_cache
+    ]
+    if unscreened:
+        st.caption(f"{len(unscreened)} displayed candidates have not had their official eligibility details checked.")
+        if st.button("Screen next 10 grants using official eligibility details"):
+            failures = 0
+            with st.spinner("Checking up to 10 official Grants.gov records..."):
+                for grant in unscreened[:10]:
+                    key = str(grant["id"])
+                    try:
+                        detail_cache[key] = get_grant_details(grant["id"])
+                    except GrantsAPIError:
+                        failures += 1
+            if failures:
+                st.warning(f"{failures} detail requests failed; those opportunities remain Needs Review.")
+            st.rerun()
+    screened_count = sum(str(g.get("id")) in detail_cache for g in matching)
+    st.caption(f"Official detail coverage: {screened_count}/{len(matching)} candidates. Unscreened results are not confirmed eligible.")
     if min_award > 0:
         matching = [
             g for g in matching
