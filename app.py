@@ -1,6 +1,7 @@
 
 import streamlit as st
 from modules.search import show_search
+from modules.profile import show_profile
 
 st.set_page_config(
     page_title="GrantScope",
@@ -26,8 +27,7 @@ elif page == "Search":
     show_search()
 
 elif page == "Profile":
-    st.header("Agency Profile")
-    st.info("Profile is under development.")
+    show_profile()
 
 elif page == "AI Help":
     st.header("AI Assistant")
