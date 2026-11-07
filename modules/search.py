@@ -206,7 +206,7 @@ def show_search():
                             detail_cache[detail_key] = get_grant_details(opportunity_id)
                         if (
                             not show_ineligible
-                            and screen_eligibility(detail_cache[detail_key], prefs["agency"])["status"] == "Ineligible"
+                            and screen_eligibility(detail_cache[detail_key], agency)["status"] == "Ineligible"
                         ):
                             st.rerun()
                     except GrantsAPIError as exc:
@@ -216,7 +216,7 @@ def show_search():
                     floor, ceiling = details["award_floor"], details["award_ceiling"]
                     fmt = lambda n: f"${n:,.0f}" if n is not None else "Not reported"
                     st.write(f'**Award floor:** {fmt(floor)} · **Award ceiling:** {fmt(ceiling)}')
-                    screening = screen_eligibility(details, prefs["agency"])
+                    screening = screen_eligibility(details, agency)
                     if screening["status"] == "Ineligible":
                         st.error(f'**Eligibility: Ineligible for direct application** — {screening["reason"]}')
                         st.caption(f'Official evidence: {screening.get("evidence", "See eligibility notes below.")}')
