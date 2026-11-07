@@ -45,3 +45,23 @@ The assistant helped draft code for Search, official API detail retrieval, initi
 - Development branch: https://github.com/Linyue0919/grantscope/tree/feature/search-reliability
 
 **Evidence policy:** This log contains observed screenshot results and clearly labeled inferences. It does not claim comprehensive verification, successful fixes, or a completed eligibility engine.
+
+## Remediation commits — November 7, 2026
+
+| Case | Change made | Commit | Verification state |
+| --- | --- | --- | --- |
+| E-001 | Removed ambiguous standalone `recovery` and other overly broad disaster terms from the DEQ goal lexicon; added contextual disaster/flood recovery phrases. | `dbb03d5` | **Pending local regression execution and UI retest** |
+| E-002 | Added `services/eligibility.py` conservative screening for an explicit institute-only applicant restriction when DEQ is selected; Search now displays Ineligible with quoted evidence for that specific rule, otherwise Needs Review. | `8737494`, `0f142af` | **Pending local regression execution and UI retest** |
+| Both | Added five `unittest` regression cases: negative semantic match, positive contextual match, institute-only exclusion, no unsupported Eligible claim, and missing-details review. | `6b94af3` | **Tests committed, not yet executed** |
+
+### How to reproduce and verify
+
+```bash
+git pull origin feature/search-reliability
+python -m unittest discover -s tests -v
+python -m streamlit run app.py
+```
+
+Then select NC DEQ, search for `water`, load official details for the Water Resources Research Act opportunity, and check whether **Ineligible for direct application** appears. Search for `recovery` and confirm that the endangered-species Recovery Land Acquisition opportunity does **not** match the disaster-recovery goal. Note that other DEQ goals could still match a different opportunity for independent reasons. Save screenshots and test output before marking E-001/E-002 as verified.
+
+**Scope caveat:** The eligibility rule recognizes one explicit exclusion pattern only; it does not establish general applicant eligibility. The semantic matcher remains a transparent keyword heuristic, not a validated AI semantic model.
