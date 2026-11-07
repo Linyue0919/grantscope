@@ -66,7 +66,10 @@ class AIRecommendationCache:
             temporary.replace(self.path)
         except OSError as exc:
             raise DiscoveryError("AI recommendation cache could not be written.") from exc
-        if self.path == Path(".grantscope/ai_recommendations.json"):
+        if (
+            self.path == Path(".grantscope/ai_recommendations.json")
+            and not project_description.strip()
+        ):
             DashboardShortlistCache().save(
                 agency, records, refreshed_at, ai_status="evaluated"
             )
@@ -172,7 +175,15 @@ def diversified_retrieval_queries(profile, project_description="", max_queries=8
     """Build bounded, distinct queries from verified goals and project needs."""
     queries = []
     if project_description and project_description.strip():
-        queries.append(" ".join(project_description.strip().split())[:240])
+        project = " ".join(project_description.strip().split())[:240]
+        queries.append(project)
+        lowered = project.lower()
+        if any(term in lowered for term in ("cyber", "security", "awareness")):
+            queries.extend(("cybersecurity education", "school safety"))
+        if any(term in lowered for term in ("faculty", "teacher", "school", "k-12")):
+            queries.extend(("teacher training", "education technology"))
+        if any(term in lowered for term in ("training", "workforce", "awareness")):
+            queries.append("workforce development")
     for goal in profile.get("goals", []):
         terms = [str(term).strip() for term in goal.get("terms", []) if str(term).strip()]
         if terms:
@@ -281,13 +292,20 @@ def prepare_ai_recommendations(
 ):
     """Explicitly precompute and persist a bounded AI-ranked recommendation set."""
     profile = VERIFIED_GOALS.get(agency)
-    if not profile:
+    if not profile and not str(project_description).strip():
         raise DiscoveryError("This agency has no verified strategic goals.")
     if config is None:
         raise DiscoveryError("Azure configuration is required for preparation.")
+    existing = cache.get(agency, project_description) if cache is not None else None
+    existing_records = (
+        existing.get("records", []) if isinstance(existing, dict) else []
+    )
+    existing_ids = {
+        str(record.get("opportunity_id")) for record in existing_records
+    }
     grants = []
     try:
-        for query in diversified_retrieval_queries(profile, project_description):
+        for query in diversified_retrieval_queries(profile or {}, project_description):
             grants.extend(fetch_grants(query, rows=rows_per_query))
     except GrantsAPIError as exc:
         raise DiscoveryError(str(exc)) from exc
@@ -295,7 +313,12 @@ def prepare_ai_recommendations(
         raise DiscoveryError("AI recommendation retrieval failed.") from exc
 
     candidates = select_ai_candidates(
-        _dedupe_grants(grants), max_candidates=max_candidates
+        [
+            grant for grant in _dedupe_grants(grants)
+            if str(grant.get("id")) not in existing_ids
+        ],
+        max_candidates=max_candidates,
+        project_description=project_description,
     )
     records = []
     for grant in candidates:
@@ -338,13 +361,14 @@ def prepare_ai_recommendations(
         -(record["semantic"].get("semantic_relevance_score") or -1),
     ))
     refreshed_at = datetime.now(timezone.utc).isoformat()
+    all_records = existing_records + records
     if cache is not None:
-        cache.save(agency, project_description, records, refreshed_at)
+        cache.save(agency, project_description, all_records, refreshed_at)
     return {
         "status": "ready",
         "agency": agency,
         "refreshed_at": refreshed_at,
-        "records": records,
+        "records": all_records,
     }
 
 

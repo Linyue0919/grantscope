@@ -19,6 +19,10 @@ class SemanticEvaluationError(RuntimeError):
     """A safe, user-facing semantic evaluation failure."""
 
 
+def _failure(reason):
+    return SemanticEvaluationError(f"Azure semantic evaluation failed: {reason}.")
+
+
 def _goal_id(goal, index):
     return str(goal.get("id") or f"goal-{goal.get('page', index + 1)}")
 
@@ -40,6 +44,7 @@ def _goal_records(profile):
 
 
 def _source_references(profile, goal_ids):
+    profile = profile or {}
     by_id = {_goal_id(goal, index): goal for index, goal in enumerate((profile or {}).get("goals", []))}
     return [
         {
@@ -76,6 +81,8 @@ def not_evaluated(reason, model=""):
     return {
         "status": NOT_EVALUATED,
         "semantic_relevance_score": None,
+        "strategic_relevance_score": None,
+        "project_relevance_score": None,
         "confidence": "Low",
         "matched_goal_ids": [],
         "verified_source_references": [],
@@ -83,13 +90,14 @@ def not_evaluated(reason, model=""):
         "relevant_opportunity_evidence": [],
         "eligibility_concerns": [],
         "recommended_next_action": "Review official evidence manually before deciding.",
+        "funding_purpose_fit": "",
         "evaluation_model": model or "Not used",
         "evaluated_at": None,
         "usage": {},
     }
 
 
-def select_ai_candidates(grants, max_candidates=5):
+def select_ai_candidates(grants, max_candidates=5, project_description=""):
     """Select a diverse, deterministic pool without relying only on keywords."""
     eligible = [grant for grant in grants if grant.get("id") not in (None, "")]
     selected, selected_ids = [], set()
@@ -101,9 +109,22 @@ def select_ai_candidates(grants, max_candidates=5):
                 selected.append(grant)
                 selected_ids.add(identifier)
 
+    project_terms = {
+        term for term in re.findall(r"[a-z0-9]+", str(project_description).lower())
+        if len(term) > 3
+    }
+
+    def project_aid(grant):
+        text = " ".join(
+            str(grant.get(field) or "")
+            for field in ("title", "description", "synopsis")
+        ).lower()
+        return sum(term in text for term in project_terms)
+
     baseline = sorted(
         eligible,
         key=lambda grant: (
+            -project_aid(grant) if project_description else 0,
             grant.get("match_score") is None,
             -(grant.get("match_score") or 0),
         ),
@@ -118,23 +139,45 @@ def select_ai_candidates(grants, max_candidates=5):
     return selected
 
 
+def _source_text(details):
+    return " ".join(
+        str(details.get(field) or "")
+        for field in ("description", "eligibility_description", "applicant_types")
+    ).lower()
+
+
 def _validate_result(raw, profile, details, agency, exclusion, project_description=""):
     if not isinstance(raw, dict):
-        raise ValueError("response was not an object")
+        raise ValueError("schema mismatch: response was not an object")
     score = raw.get("semantic_relevance_score")
     if isinstance(score, bool) or not isinstance(score, int) or not 0 <= score <= 100:
-        raise ValueError("invalid semantic score")
+        raise ValueError("invalid semantic_relevance_score")
     confidence = raw.get("confidence")
     if confidence not in CONFIDENCES:
         raise ValueError("invalid confidence")
-    valid_ids = {_goal_id(goal, index) for index, goal in enumerate(profile.get("goals", []))}
+    valid_ids = {
+        _goal_id(goal, index)
+        for index, goal in enumerate((profile or {}).get("goals", []))
+    }
     matched = raw.get("matched_goal_ids")
     if not isinstance(matched, list) or not all(item in valid_ids for item in matched):
-        raise ValueError("invalid matched goals")
+        raise ValueError("invalid matched_goal_ids")
     evidence = raw.get("relevant_opportunity_evidence")
     concerns = raw.get("eligibility_concerns")
     if not isinstance(evidence, list) or not isinstance(concerns, list):
-        raise ValueError("invalid evidence fields")
+        raise ValueError("missing evidence fields")
+    explanation = str(raw.get("evidence_grounded_explanation") or "").strip()
+    next_action = str(raw.get("recommended_next_action") or "").strip()
+    if not explanation:
+        raise ValueError("missing evidence_grounded_explanation")
+    if not next_action:
+        raise ValueError("missing recommended_next_action")
+    source_text = _source_text(details)
+    if evidence and not any(
+        str(item).strip().lower() in source_text
+        for item in evidence if str(item).strip()
+    ):
+        raise ValueError("evidence snippets do not match official detail text")
     strategic_score = raw.get("strategic_relevance_score")
     project_score = raw.get("project_relevance_score")
     for field, value in (
@@ -157,10 +200,11 @@ def _validate_result(raw, profile, details, agency, exclusion, project_descripti
         "confidence": confidence,
         "matched_goal_ids": matched,
         "verified_source_references": _source_references(profile, matched),
-        "evidence_grounded_explanation": str(raw.get("evidence_grounded_explanation") or "")[:1200],
+        "evidence_grounded_explanation": explanation[:1200],
         "relevant_opportunity_evidence": [str(item)[:700] for item in evidence[:5]],
         "eligibility_concerns": [str(item)[:700] for item in concerns[:5]],
-        "recommended_next_action": str(raw.get("recommended_next_action") or "")[:1200],
+        "recommended_next_action": next_action[:1200],
+        "funding_purpose_fit": str(raw.get("funding_purpose_fit") or "")[:1200],
         "evaluation_model": str(raw.get("evaluation_model") or ""),
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
         "usage": raw.get("usage") if isinstance(raw.get("usage"), dict) else {},
@@ -193,7 +237,7 @@ def evaluate_semantic_match(
     )
     if cache is not None and cache_key in cache:
         return cache[cache_key]
-    if not profile or not profile.get("goals"):
+    if (not profile or not profile.get("goals")) and not str(project_description).strip():
         return not_evaluated("No verified strategic goals are available for this agency.", deployment)
     if not grant.get("id"):
         return not_evaluated("The opportunity has no official identifier.", deployment)
@@ -220,15 +264,22 @@ def evaluate_semantic_match(
         "project_description": str(project_description or "")[:4000],
     }
     system = (
-        "Evaluate strategic relevance using the supplied verified goals and official evidence. "
+        "Act as a Federal Grant Analyst. Evaluate actual funding suitability, not keyword similarity. "
+        "Consider the applicant agency identity, project activities, verified goals, official purpose, "
+        "allowable activities, applicant eligibility, funding constraints, and deadline. "
         "If a project description is supplied, also evaluate project fit against the official evidence "
-        "and report that fit in the same semantic_relevance_score; state the project basis in the explanation. "
+        "and use project_relevance_score as the primary relevance score. If no project is supplied, "
+        "use verified strategic goals. If neither exists, do not evaluate. "
+        "A K-12 astronomy or science grant is not suitable for cybersecurity training unless the official "
+        "purpose and activities support cybersecurity. "
         "Never invent goals, pages, eligibility, amounts, deadlines, or citations. "
+        "Use exact short snippets from supplied official description or eligibility fields in "
+        "relevant_opportunity_evidence. "
         "Return JSON with semantic_relevance_score (integer 0-100), strategic_relevance_score "
         "(integer 0-100 or null), project_relevance_score (integer 0-100 or null), "
         "confidence (High/Medium/Low), "
         "matched_goal_ids (only supplied IDs), evidence_grounded_explanation, "
-        "relevant_opportunity_evidence (array), eligibility_concerns (array), "
+        "relevant_opportunity_evidence (array), eligibility_concerns (array), funding_purpose_fit, "
         "recommended_next_action, evaluation_model, evaluated_at, and usage. "
         "Strategic relevance is not eligibility. If applicant restrictions exist, flag them and do not recommend direct application."
     )
@@ -242,7 +293,8 @@ def evaluate_semantic_match(
             }, ensure_ascii=False)},
         ],
         "temperature": 0,
-        "max_tokens": 500,
+        "max_tokens": 800,
+        "response_format": {"type": "json_object"},
     }
     try:
         response = request_post(
@@ -254,7 +306,17 @@ def evaluate_semantic_match(
         )
         response.raise_for_status()
         data = response.json()
-        raw = data["choices"][0]["message"]["content"]
+        if not isinstance(data, dict):
+            raise ValueError("malformed response envelope")
+        choice = data["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise ValueError("response truncated")
+        message = choice["message"]
+        if message.get("refusal"):
+            raise ValueError("model refusal")
+        raw = message["content"]
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError("missing response content")
         raw = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(raw).strip())
         result = json.loads(raw)
         usage = data.get("usage")
@@ -267,10 +329,14 @@ def evaluate_semantic_match(
         validated = _validate_result(
             result, profile, details, agency, exclusion, project_description
         )
-    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
-        raise SemanticEvaluationError(
-            "Azure semantic evaluation failed or returned invalid structured data."
-        ) from None
+    except requests.RequestException:
+        raise _failure("request failed") from None
+    except json.JSONDecodeError:
+        raise _failure("malformed JSON response") from None
+    except ValueError as exc:
+        raise _failure(str(exc)) from None
+    except (KeyError, IndexError, TypeError):
+        raise _failure("schema mismatch") from None
     if cache is not None:
         cache[cache_key] = validated
     return validated

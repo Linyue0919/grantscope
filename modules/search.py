@@ -9,6 +9,26 @@ from services.agency_directory import AGENCIES
 from services.matching import project_relevance, rank_grants
 from services.eligibility import screen_eligibility
 from services.verified_goals import VERIFIED_GOALS
+
+
+def partition_recommendation_results(grants, classifications):
+    """Keep only actionable AI recommendations in the primary result list."""
+    by_id = {
+        record["opportunity_id"]: record["recommendation"]
+        for record in classifications["all_records"]
+    }
+    recommended = [
+        grant for grant in grants
+        if by_id.get(str(grant.get("id")), {}).get("classification")
+        == "Recommended"
+    ]
+    review = [
+        grant for grant in grants
+        if by_id.get(str(grant.get("id")), {}).get("classification")
+        != "Recommended"
+        and by_id.get(str(grant.get("id")), {}).get("included", True)
+    ]
+    return recommended, review
 from services.grant_store import LocalGrantStore
 from services.discovery import (
     AIRecommendationCache,
@@ -493,16 +513,6 @@ def show_search():
             st.rerun()
         except DiscoveryError as exc:
             st.error(str(exc))
-    zero_evidence = sum(g["match_score"] == 0 and not g["_excluded"] for g in ranked)
-    if not show_zero_matches:
-        ranked = [
-            g for g in ranked
-            if g["match_score"] != 0
-            or g["_excluded"]
-            or semantic_results.get(f"{agency}::{g.get('id')}", {}).get("status") == "Evaluated"
-        ]
-        if zero_evidence:
-            st.info(f"{zero_evidence} zero-evidence result(s) remain available for AI evaluation; unevaluated ones are hidden unless audit view is enabled.")
     semantic_by_id = {
         key.split("::", 1)[1]: value
         for key, value in semantic_results.items()
@@ -530,13 +540,23 @@ def show_search():
     }
     for grant in ranked:
         grant["_recommendation"] = classification_by_id.get(str(grant.get("id")))
-    ranked = [
-        grant for grant in ranked
-        if classification_by_id.get(str(grant.get("id")), {}).get("included", True)
-    ]
-    ranked = sort_results(ranked, sort_by, semantic_results)
+    recommended, review = partition_recommendation_results(ranked, classified)
+    recommended_ranked = sort_results(
+        recommended,
+        sort_by,
+        semantic_results,
+    )
+    review_ranked = sort_results(
+        review,
+        sort_by,
+        semantic_results,
+    )
+    ranked = recommended_ranked
     if not ranked:
-        st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
+        st.info(
+            "No AI-evaluated opportunities meet the current relevance threshold. "
+            "Unevaluated and below-threshold records are available in the review section."
+        )
     decisions = st.session_state.setdefault("grant_decisions", {})
     for key, record in saved_records.items():
         if record.get("decision") or record.get("notes"):
@@ -550,16 +570,17 @@ def show_search():
     unverified_goals = sum(not grant["plan_verified"] for grant in ranked)
     st.subheader("Results Overview")
     st.write(
-        f"{len(ranked)} opportunities shown · "
+        f"{len(grants)} retrieved · "
+        f"{classified['counts']['ai_evaluated']} AI evaluated · "
         f"{classified['counts']['recommended']} recommended · "
+        f"{classified['counts']['below_threshold']} below threshold · "
         f"{classified['counts']['confirmed_ineligible']} confirmed ineligible · "
-        f"{classified['counts']['not_evaluated']} not AI evaluated · "
+        f"{classified['counts']['not_evaluated']} pending evaluation · "
         f"{sum((agency + '::' + str(grant.get('id'))) in decisions for grant in ranked)} decisions saved"
     )
     with st.expander("Data quality details"):
         st.caption(
-            f"Retrieved search records: {len(grants)} · Classified result pool: {classified['counts']['retrieved']} · "
-            f"AI evaluated: {classified['counts']['ai_evaluated']} · "
+            f"Classified result pool: {classified['counts']['retrieved']} · "
             f"Below AI threshold: {classified['counts']['below_threshold']} · "
             f"Missing deadlines: {missing_deadline} · Missing award ceilings: {missing_ceiling} · "
             f"Unknown statuses: {unknown_status} · Agencies without verified goals: {unverified_goals}"
@@ -746,7 +767,7 @@ def show_search():
                                 )
                             else:
                                 st.caption(semantic["evidence_grounded_explanation"])
-                        if agency in VERIFIED_GOALS and not semantic:
+                        if not semantic:
                             st.caption(
                                 "AI matching has not been generated for this opportunity. "
                                 "Use the bounded preparation action above; page reruns do not make paid requests."
@@ -755,5 +776,31 @@ def show_search():
                     st.caption("Load official details to view analysis and evidence.")
                 st.link_button(
                     "View Official Opportunity",
+                    f"https://www.grants.gov/search-results-detail/{opportunity_id}",
+                )
+    with st.expander(
+        f"Review unevaluated and non-recommended results ({len(review_ranked)})",
+        expanded=False,
+    ):
+        st.caption(
+            "These records are not AI recommendations. Review official evidence before acting."
+        )
+        for grant in review_ranked:
+            recommendation = grant.get("_recommendation") or {}
+            title = grant.get("title") or "Untitled Grant"
+            status = recommendation.get("classification", "Not AI Evaluated")
+            st.write(
+                f"**{title}** · {status} · "
+                f"Official deadline: {grant.get('closeDate') or 'Not reported'}"
+            )
+            st.caption(
+                f"Baseline project relevance: "
+                f"{grant.get('_project_relevance_score') if project_description.strip() else 'Not evaluated'}"
+                " · Confirm official details before deciding."
+            )
+            opportunity_id = grant.get("id")
+            if opportunity_id:
+                st.link_button(
+                    "View official opportunity",
                     f"https://www.grants.gov/search-results-detail/{opportunity_id}",
                 )

@@ -5,6 +5,7 @@ from modules.search import (
     apply_search_filters,
     decision_csv,
     eligibility_summary,
+    partition_recommendation_results,
     relevance_summary,
     sort_results,
 )
@@ -228,6 +229,12 @@ class SearchPresentationTests(unittest.TestCase):
         queries = diversified_retrieval_queries(profile, "Community health clinic")
         self.assertGreaterEqual(len(queries), 3)
         self.assertEqual(len(queries), len(set(queries)))
+        cyber_queries = diversified_retrieval_queries(
+            {}, "Cybersecurity awareness training for K-12 school faculty"
+        )
+        self.assertIn("cybersecurity education", cyber_queries)
+        self.assertIn("school safety", cyber_queries)
+        self.assertIn("teacher training", cyber_queries)
         calls = []
         grants = [{"id": "1", "title": "Opportunity"}]
 
@@ -355,6 +362,49 @@ class SearchPresentationTests(unittest.TestCase):
             records, {}, minimum_score=60, include_uncertain=False
         )
         self.assertEqual(hidden["records"], [])
+
+    def test_only_evaluated_records_meeting_threshold_are_recommended(self):
+        records = [
+            {"opportunity_id": "1", "eligibility_status": "Needs Review"},
+            {"opportunity_id": "2", "eligibility_status": "Needs Review"},
+            {"opportunity_id": "3", "eligibility_status": "Ineligible"},
+        ]
+        result = classify_recommendations(
+            records,
+            {
+                "1": {"status": "Evaluated", "project_relevance_score": 85},
+                "2": {"status": "Not AI Evaluated"},
+                "3": {"status": "Evaluated", "project_relevance_score": 100},
+            },
+            minimum_score=60,
+            include_uncertain=False,
+            project_description="Cybersecurity awareness training",
+        )
+        self.assertEqual(
+            [record["opportunity_id"] for record in result["records"]],
+            ["1"],
+        )
+        self.assertEqual(result["counts"]["recommended"], 1)
+        self.assertEqual(result["counts"]["not_evaluated"], 1)
+        self.assertEqual(result["counts"]["confirmed_ineligible"], 1)
+
+    def test_k12_project_review_keeps_thirteen_unevaluated_out_of_primary_results(self):
+        grants = [
+            {"id": str(index), "title": "K-12 opportunity"}
+            for index in range(13)
+        ]
+        result = classify_recommendations(
+            [
+                {"opportunity_id": grant["id"], "eligibility_status": "Needs Review"}
+                for grant in grants
+            ],
+            {},
+            minimum_score=60,
+            project_description="Educations for cybersecurity awareness within faculty",
+        )
+        recommended, review = partition_recommendation_results(grants, result)
+        self.assertEqual(recommended, [])
+        self.assertEqual(len(review), 13)
 
 
 if __name__ == "__main__":
