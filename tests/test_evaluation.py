@@ -5,6 +5,7 @@ Run: python -m unittest discover -s tests -v
 import unittest
 from services.matching import rank_grants
 from services.eligibility import screen_eligibility
+from services.grants_api import plain_official_text
 
 
 DEQ = "Department of Environmental Quality"
@@ -59,6 +60,30 @@ class EvaluationRegressionTests(unittest.TestCase):
         grant = {"id": 778, "title": "Public Safety Grants"}
         result = rank_grants([grant], "Department of Public Safety")[0]
         self.assertIsNone(result["match_score"])
+
+    def test_tribal_only_nofO_excludes_deq_direct_application(self):
+        details = {
+            "applicant_types": [],
+            "description": (
+                "Eligible applicants to this Notice of Funding Opportunity (NOFO) "
+                "are federally recognized Tribes and intertribal consortia that "
+                "meet the eligibility requirements described in Section 2.A."
+            ),
+        }
+        result = screen_eligibility(details, DEQ)
+        self.assertEqual(result["status"], "Ineligible")
+        self.assertIn("federally recognized Tribes", result["evidence"])
+
+    def test_incidental_tribal_reference_does_not_exclude_deq(self):
+        details = {
+            "applicant_types": ["State governments"],
+            "description": "Projects may benefit Tribes and intertribal consortia.",
+        }
+        self.assertEqual(screen_eligibility(details, DEQ)["status"], "Needs Review")
+
+    def test_html_is_plain_text_not_rendered_markup(self):
+        text = plain_official_text("<p>Eligible applicants are Tribes &amp; consortia.</p><p>See Section 2.A.</p>")
+        self.assertEqual(text, "Eligible applicants are Tribes & consortia. See Section 2.A.")
 
     def test_no_details_means_review(self):
         self.assertEqual(screen_eligibility({}, DEQ)["status"], "Needs Review")
