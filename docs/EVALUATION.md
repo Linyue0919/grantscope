@@ -75,3 +75,13 @@ Then select NC DEQ, search for `water`, load official details for the Water Reso
 **Verification status:** **Not yet locally tested.** Confirm the batch button loads official details, that progress counts update, that confirmed ineligible results disappear by default, and that audit view restores them. Inspect terminal for errors. This is bounded manual batch screening, **not** unattended or exhaustive auto-classification; the classifier still recognizes a narrow explicit-exclusion pattern.
 
 **Future evaluation:** Measure official detail coverage, API failures, false positives, and false negatives on a manually labeled sample. Avoid claiming 100% coverage.
+
+## E-007 — Excess zero-score results (Nov 7, 2026)
+
+**Observed by user:** Search displayed many grants with strategic relevance **0/100**. **Root cause found in code:** matching used a strict set of keyword overlaps on grant title/short search text; a grant received zero if no configured goal term appeared, regardless of semantic relevance or missing descriptive data. The UI did not suppress or distinguish these results.
+
+**Fix committed:** `d2cb9e8` includes official detail descriptions when available; `646d60c` hides zero-evidence results by default but preserves an audit toggle; `101a6bb` adds tests for detail-enriched matches and unscored agencies.
+
+**Interpretation:** Zero means **no lexical evidence under this prototype**, not evidence of actual irrelevance. Agencies without loaded goal profiles have `None` (unscored), not zero. These changes improve transparency but **do not constitute semantic AI matching**.
+
+**Verification:** Pending execution of seven regression tests and Streamlit UI retest. Check that hidden counts and audit view behave correctly, and that loading details can increase relevance when appropriate.
