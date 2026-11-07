@@ -5,6 +5,7 @@ import streamlit as st
 from services.grants_api import get_grants, get_grant_details, GrantsAPIError
 from modules.profile import get_preferences
 from services.matching import rank_grants
+from services.eligibility import screen_eligibility
 
 
 def parse_close_date(value):
@@ -159,7 +160,7 @@ def show_search():
                 st.caption("Strategic plan goals not yet verified for this agency; no relevance score assigned.")
             st.write(f"**Federal agency:** {agency}")
             st.write(f"**Closing date (Grants.gov):** {closing}")
-            st.caption("Eligibility: Needs Review. Award amount: not verified. Relevance is based on available summary text only; verify full official opportunity details.")
+            st.caption("Eligibility requires official detail review. Strategic relevance does not establish application eligibility.")
             if opportunity_id:
                 detail_key = str(opportunity_id)
                 if st.button("Load official award & eligibility details", key=f"detail_{detail_key}"):
@@ -173,7 +174,12 @@ def show_search():
                     floor, ceiling = details["award_floor"], details["award_ceiling"]
                     fmt = lambda n: f"${n:,.0f}" if n is not None else "Not reported"
                     st.write(f'**Award floor:** {fmt(floor)} · **Award ceiling:** {fmt(ceiling)}')
-                    st.write("**Eligibility: Needs Review** — applicant categories alone do not prove eligibility.")
+                    screening = screen_eligibility(details, prefs["agency"])
+                    if screening["status"] == "Ineligible":
+                        st.error(f'**Eligibility: Ineligible for direct application** — {screening["reason"]}')
+                        st.caption(f'Official evidence: {screening.get("evidence", "See eligibility notes below.")}')
+                    else:
+                        st.warning(f'**Eligibility: Needs Review** — {screening["reason"]}')
                     st.write("**Official applicant types:** " + (", ".join(details["applicant_types"]) or "Not reported"))
                     if details["eligibility_description"]:
                         with st.expander("Official eligibility notes"):
