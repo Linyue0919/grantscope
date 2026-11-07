@@ -4,6 +4,7 @@ import streamlit as st
 
 from services.grants_api import get_grants, GrantsAPIError
 from modules.profile import get_preferences
+from services.matching import rank_grants
 
 
 def parse_close_date(value):
@@ -120,19 +121,31 @@ def show_search():
     if not matching:
         st.warning("No results in this deadline window. Try more days or a broader keyword.")
 
-    for grant in matching:
+    ranked = rank_grants(matching, prefs["agency"])
+    if ranked and not ranked[0]["plan_verified"]:
+        st.info("No verified strategic goals have been extracted for this agency yet. Results are shown without a match score; eligibility still needs human review.")
+    else:
+        st.caption("Match scores are a simple, preliminary strategic-topic overlap heuristic, NOT grant eligibility or award probability.")
+    for grant in ranked:
         title = grant.get("title") or "Untitled Grant"
         agency = grant.get("agency") or "Unknown federal agency"
         closing = grant.get("closeDate") or "Not specified"
         opportunity_id = grant.get("id")
         with st.container(border=True):
             st.subheader(title)
+            if grant["match_score"] is not None:
+                st.write(f'**Strategic relevance (prototype): {grant["match_score"]}/100**')
+                if grant["match_reasons"]:
+                    for reason in grant["match_reasons"]:
+                        st.caption(f'Plan goal: {reason["goal"]} (plan page {reason["page"]}); matched terms: {", ".join(reason["keywords"])}')
+                else:
+                    st.caption("No goal keywords matched in the available search summary.")
+                st.markdown(f'[Agency strategic plan source]({grant["plan_url"]})')
+            else:
+                st.caption("Strategic plan goals not yet verified for this agency; no relevance score assigned.")
             st.write(f"**Federal agency:** {agency}")
             st.write(f"**Closing date (Grants.gov):** {closing}")
-            st.caption(
-                "NC agency eligibility, award amount and match score have "
-                "NOT been verified. This is a keyword search, not an AI recommendation."
-            )
+            st.caption("Eligibility: Needs Review. Award amount: not verified. Relevance is based on available summary text only; verify full official opportunity details.")
             if opportunity_id:
                 st.link_button(
                     "View Official Opportunity",
