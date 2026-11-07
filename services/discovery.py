@@ -21,6 +21,20 @@ class DiscoveryError(RuntimeError):
     """A safe error while generating a cached shortlist."""
 
 
+AI_EVALUATION_VERSION = "analyst-v2"
+
+
+def research_depth_limit(depth, custom_limit=30):
+    """Return the maximum number of new Azure evaluations for a depth choice."""
+    if depth == "Quick":
+        return 10
+    if depth == "Deep":
+        return 50
+    if depth == "Custom":
+        return max(5, min(100, int(custom_limit or 30) // 5 * 5))
+    return 30
+
+
 def recommendation_namespace(agency, project_description=""):
     digest = hashlib.sha256(
         str(project_description or "").strip().encode("utf-8")
@@ -47,7 +61,15 @@ class AIRecommendationCache:
 
     def get(self, agency, project_description=""):
         value = self._read().get(recommendation_namespace(agency, project_description))
-        return value if isinstance(value, dict) else None
+        if not isinstance(value, dict):
+            return None
+        # Keep legacy records reviewable, but never reuse an obsolete evaluation.
+        value = {**value, "records": [dict(record) for record in value.get("records", [])]}
+        for record in value["records"]:
+            if record.get("evaluation_version") != AI_EVALUATION_VERSION:
+                record["semantic"] = {"status": "Not AI Evaluated",
+                    "evidence_grounded_explanation": "Cached evaluation version is stale; explicit analysis is required."}
+        return value
 
     def save(self, agency, project_description, records, refreshed_at):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,13 +140,46 @@ def classify_recommendation(record, semantic=None, minimum_score=60,
         else "strategic_relevance_score"
     )
     score = semantic.get(score_field)
-    if not isinstance(score, int):
+    if isinstance(score, bool) or not isinstance(score, int) or not 0 <= score <= 100:
         return {
             "classification": "Not AI Evaluated",
             "included": include_uncertain,
             "score": None,
             "reason": "The cached AI evaluation has no usable relevance score.",
         }
+    if not semantic.get("evidence_verified"):
+        return {
+            "classification": "Needs Evidence Review",
+            "included": include_uncertain,
+            "score": score,
+            "reason": "The AI result does not contain verifiable official evidence.",
+        }
+    # Relevance and an exact quotation do not establish funding suitability or readiness.
+    if score >= minimum_score:
+        reason = None
+        if (semantic.get("funding_purpose_status") != "Supported"
+                or not str(semantic.get("funding_purpose_fit") or "").strip()):
+            reason = "Funding purpose, allowable activities, audience and geography need review. " + str(semantic.get("funding_purpose_fit") or "No explicit purpose-fit assessment is available.")
+        elif semantic.get("eligibility_concerns"):
+            reason = "Applicant or partnership conditions need review: " + "; ".join(str(item) for item in semantic["eligibility_concerns"])
+        elif str(record.get("opportunity_status") or "").lower() != "posted":
+            reason = "Current posted status is not verified; forecasted or unknown records are research leads."
+        else:
+            raw_date = str(record.get("close_date") or "")
+            closing = None
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"):
+                try:
+                    closing = datetime.strptime(raw_date[:10], fmt).date()
+                    break
+                except ValueError:
+                    pass
+            from zoneinfo import ZoneInfo
+            today = datetime.now(ZoneInfo("America/New_York")).date()
+            if closing is None or closing < today:
+                reason = "Application date is missing, invalid or past; verify the official notice before acting."
+        if reason:
+            return {"classification": "Needs Evidence Review", "included": include_uncertain,
+                    "score": score, "reason": reason}
     return {
         "classification": "Recommended" if score >= minimum_score else "Below AI threshold",
         "included": score >= minimum_score,
@@ -144,6 +199,7 @@ def classify_recommendations(records, semantic_by_id, minimum_score=60,
         "below_threshold": 0,
         "confirmed_ineligible": 0,
         "not_evaluated": 0,
+        "needs_evidence_review": 0,
     }
     visible = []
     classified = []
@@ -161,6 +217,8 @@ def classify_recommendations(records, semantic_by_id, minimum_score=60,
             counts["confirmed_ineligible"] += 1
         elif classification["classification"] == "Not AI Evaluated":
             counts["not_evaluated"] += 1
+        elif classification["classification"] == "Needs Evidence Review":
+            counts["needs_evidence_review"] += 1
         elif semantic and semantic.get("status") == "Evaluated":
             if classification["classification"] == "Below AI threshold":
                 counts["below_threshold"] += 1
@@ -201,11 +259,37 @@ def _dedupe_grants(grants):
     return list(unique.values())
 
 
+def merge_cached_opportunities(grants, records):
+    """Merge cached official opportunities into the current Search pool by ID."""
+    merged = {str(grant.get("id")): dict(grant) for grant in grants if grant.get("id")}
+    for record in records or []:
+        opportunity_id = record.get("opportunity_id")
+        if not opportunity_id:
+            continue
+        cached_grant = {
+            "id": str(opportunity_id),
+            "title": record.get("title"),
+            "agency": record.get("federal_agency"),
+            "closeDate": record.get("close_date"),
+            "oppStatus": record.get("opportunity_status") or "Unknown",
+            "description": record.get("description"),
+            "awardCeiling": record.get("award_ceiling"),
+            "_cached_official_url": record.get("official_url"),
+        }
+        current = merged.get(str(opportunity_id), {})
+        merged[str(opportunity_id)] = {
+            **cached_grant,
+            **current,
+        }
+    return list(merged.values())
+
+
 def get_cached_ai_shortlist(agency, cache, minimum_score=60,
                              exclude_confirmed_ineligible=True,
                              include_uncertain=True, project_description=""):
     """Return an explicit state for Dashboard owners; never substitute baseline data."""
-    cached = cache.get(agency)
+    cached = (cache.get(agency, project_description)
+              if isinstance(cache, AIRecommendationCache) else cache.get(agency))
     if not cached:
         return {"status": "pending", "agency": agency, "records": []}
     if cached.get("ai_status") != "evaluated":
@@ -288,7 +372,10 @@ def prepare_ai_recommendations(
     evaluate=evaluate_semantic_match,
     config=None,
     max_candidates=5,
+    max_new_evaluations=None,
+    batch_size=5,
     rows_per_query=25,
+    seed_grants=None,
 ):
     """Explicitly precompute and persist a bounded AI-ranked recommendation set."""
     profile = VERIFIED_GOALS.get(agency)
@@ -301,9 +388,17 @@ def prepare_ai_recommendations(
         existing.get("records", []) if isinstance(existing, dict) else []
     )
     existing_ids = {
-        str(record.get("opportunity_id")) for record in existing_records
+        str(record.get("opportunity_id"))
+        for record in existing_records
+        if record.get("evaluation_version") == AI_EVALUATION_VERSION
+        and (record.get("semantic", {}).get("status") == "Evaluated"
+             or record.get("eligibility_status") == "Ineligible")
     }
+    target = max_candidates if max_new_evaluations is None else max_new_evaluations
+    target = max(0, min(100, int(target)))
+    batch_size = max(1, min(10, int(batch_size)))
     grants = []
+    grants.extend(seed_grants or [])
     try:
         for query in diversified_retrieval_queries(profile or {}, project_description):
             grants.extend(fetch_grants(query, rows=rows_per_query))
@@ -312,63 +407,117 @@ def prepare_ai_recommendations(
     except Exception as exc:
         raise DiscoveryError("AI recommendation retrieval failed.") from exc
 
+    unique_grants = _dedupe_grants(grants)
     candidates = select_ai_candidates(
-        [
-            grant for grant in _dedupe_grants(grants)
-            if str(grant.get("id")) not in existing_ids
-        ],
-        max_candidates=max_candidates,
+        [grant for grant in unique_grants
+         if str(grant.get("id")) not in existing_ids],
+        max_candidates=len(unique_grants),
         project_description=project_description,
     )
-    records = []
-    for grant in candidates:
-        try:
-            details = fetch_details(grant["id"])
+    all_records = list(existing_records)
+    attempted = succeeded = failed = skipped_ineligible = 0
+    processed = official_details_screened = 0
+    persisted_batches = 0
+    for offset in range(0, len(candidates), batch_size):
+        if attempted >= target:
+            break
+        batch_records = []
+        for grant in candidates[offset:offset + batch_size]:
+            if attempted >= target:
+                break
+            processed += 1
+            try:
+                details = fetch_details(grant["id"])
+            except GrantsAPIError as exc:
+                failed += 1
+                batch_records.append(_research_record(
+                    grant, {}, screen_eligibility({}, agency),
+                    {"status": "Not AI Evaluated",
+                     "semantic_relevance_score": None,
+                     "evidence_grounded_explanation": str(exc)},
+                ))
+                continue
+            official_details_screened += 1
             screening = screen_eligibility(details, agency)
-            semantic = evaluate(
-                agency, profile, grant, details, config,
-                exclusion=screening if screening["status"] == "Ineligible" else None,
-                project_description=project_description,
+            if screening["status"] == "Ineligible":
+                skipped_ineligible += 1
+                batch_records.append(_research_record(
+                    grant, details, screening,
+                    {"status": "Not AI Evaluated",
+                     "semantic_relevance_score": None,
+                     "evidence_grounded_explanation": "Skipped after official eligibility screening."},
+                ))
+                continue
+            attempted += 1
+            try:
+                semantic = evaluate(
+                    agency, profile, grant, details, config,
+                    exclusion=None, project_description=project_description,
+                )
+                if semantic.get("status") == "Evaluated":
+                    succeeded += 1
+                else:
+                    failed += 1
+            except (GrantsAPIError, SemanticEvaluationError) as exc:
+                failed += 1
+                semantic = {
+                    "status": "Not AI Evaluated",
+                    "semantic_relevance_score": None,
+                    "evidence_grounded_explanation": str(exc),
+                }
+            batch_records.append(_research_record(grant, details, screening, semantic))
+        # Replace retries by official ID rather than appending duplicate failures.
+        records_by_id = {str(record["opportunity_id"]): record for record in all_records}
+        records_by_id.update({str(record["opportunity_id"]): record for record in batch_records})
+        all_records = list(records_by_id.values())
+        if batch_records and cache is not None:
+            cache.save(
+                agency, project_description, all_records,
+                datetime.now(timezone.utc).isoformat(),
             )
-        except (GrantsAPIError, SemanticEvaluationError) as exc:
-            details = {}
-            screening = screen_eligibility(details, agency)
-            semantic = {
-                "status": "Not AI Evaluated",
-                "semantic_relevance_score": None,
-                "evidence_grounded_explanation": str(exc),
-            }
-        records.append({
-            "opportunity_id": str(grant["id"]),
-            "title": grant.get("title") or "Untitled grant",
-            "federal_agency": grant.get("agency") or grant.get("agencyName") or "Unknown",
-            "close_date": grant.get("closeDate"),
-            "official_url": details.get(
-                "detail_source_url",
-                f"https://www.grants.gov/search-results-detail/{grant['id']}",
-            ),
-            "award_floor": details.get("award_floor"),
-            "award_ceiling": details.get("award_ceiling"),
-            "description": details.get("description"),
-            "eligibility_status": screening["status"],
-            "eligibility_reason": screening.get("reason"),
-            "eligibility_evidence": screening.get("evidence"),
-            "baseline_keyword_score": grant.get("match_score"),
-            "semantic": semantic,
-        })
-    records.sort(key=lambda record: (
-        record["eligibility_status"] == "Ineligible",
-        -(record["semantic"].get("semantic_relevance_score") or -1),
-    ))
+            persisted_batches += 1
     refreshed_at = datetime.now(timezone.utc).isoformat()
-    all_records = existing_records + records
-    if cache is not None:
+    if cache is not None and not persisted_batches:
         cache.save(agency, project_description, all_records, refreshed_at)
     return {
         "status": "ready",
         "agency": agency,
         "refreshed_at": refreshed_at,
         "records": all_records,
+        "summary": {
+            "retrieved": len(grants),
+            "deduplicated": len(unique_grants),
+            "official_details_screened": official_details_screened,
+            "attempted": attempted,
+            "succeeded": succeeded,
+            "failed": failed,
+            "skipped_ineligible": skipped_ineligible,
+            "remaining_candidates": max(0, len(candidates) - processed),
+        },
+    }
+
+
+def _research_record(grant, details, screening, semantic):
+    return {
+        "opportunity_id": str(grant["id"]),
+        "title": grant.get("title") or "Untitled grant",
+        "federal_agency": grant.get("agency") or grant.get("agencyName") or "Unknown",
+        "close_date": details.get("close_date") or grant.get("closeDate"),
+        "opportunity_status": details.get("opportunity_status") or grant.get("oppStatus") or grant.get("status"),
+        "official_details": dict(details),
+        "official_url": details.get(
+            "detail_source_url",
+            f"https://www.grants.gov/search-results-detail/{grant['id']}",
+        ),
+        "award_floor": details.get("award_floor"),
+        "award_ceiling": details.get("award_ceiling"),
+        "description": details.get("description"),
+        "eligibility_status": screening["status"],
+        "eligibility_reason": screening.get("reason"),
+        "eligibility_evidence": screening.get("evidence"),
+        "baseline_keyword_score": grant.get("match_score"),
+        "evaluation_version": AI_EVALUATION_VERSION,
+        "semantic": semantic,
     }
 
 

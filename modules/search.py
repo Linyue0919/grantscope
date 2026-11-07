@@ -21,12 +21,14 @@ def partition_recommendation_results(grants, classifications):
         grant for grant in grants
         if by_id.get(str(grant.get("id")), {}).get("classification")
         == "Recommended"
+        and by_id.get(str(grant.get("id")), {}).get("included")
     ]
     review = [
         grant for grant in grants
         if by_id.get(str(grant.get("id")), {}).get("classification")
         != "Recommended"
-        and by_id.get(str(grant.get("id")), {}).get("included", True)
+        and by_id.get(str(grant.get("id")), {}).get("classification")
+        != "Confirmed Ineligible"
     ]
     return recommended, review
 from services.grant_store import LocalGrantStore
@@ -35,7 +37,9 @@ from services.discovery import (
     DiscoveryError,
     cached_semantic_results,
     classify_recommendations,
+    merge_cached_opportunities,
     prepare_ai_recommendations,
+    research_depth_limit,
 )
 
 
@@ -64,7 +68,7 @@ def filter_by_deadline(grants, deadline_days, include_unknown=False, today=None)
             unknown += 1
             if include_unknown:
                 matching.append(grant)
-        elif 0 <= (closing - today).days <= deadline_days:
+        elif (closing - today).days >= 0 and (deadline_days is None or (closing - today).days <= deadline_days):
             matching.append(grant)
     return sorted(
         matching,
@@ -269,141 +273,172 @@ def _format_amount(value):
 
 
 def show_search():
-    st.header("Search Federal Grants")
-    st.write("Discover live federal funding opportunities for NC agencies.")
-    st.caption("Search is independent of saved Profile preferences. Choose filters for this search.")
+    st.header("Find Federal Funding")
+    st.caption("Find fewer grants. Find the right grants. Act sooner.")
     store = LocalGrantStore()
     saved_records = {
         f"{record['agency']}::{record['opportunity_id']}": record
         for record in store.list_records()
     }
     agency = st.selectbox("Agency to evaluate", AGENCIES, key="search_agency")
-    st.caption("All 33 North Carolina agency directory options are preserved. Strategic goals are shown only where verified.")
+    st.caption("Strategic goals are used only when officially verified.")
     query = st.text_input(
-        "Search opportunities",
+        "Keywords (optional)",
         key="search_query",
-        placeholder="e.g. clean water, transportation, rural health",
+        placeholder="e.g. cybersecurity, clean water, transportation",
     )
     project_description = st.text_area(
-        "Project description (optional)",
-        placeholder="Describe the concrete project, population, location, or outcomes.",
-        help="Project relevance is a transparent term-overlap signal from official opportunity text. It is separate from strategic relevance and AI evaluation.",
+        "What project are you trying to fund?",
+        placeholder="Describe the activities, people served, and intended outcomes.",
+        help="AI evaluates project fit against official opportunity evidence.",
     )
-    col1, col2 = st.columns(2)
-    with col1:
+    # Keywords alone still define a project-specific research namespace.
+    project_description = project_description.strip() or query.strip()
+    with st.expander("Advanced filters", expanded=False):
+        limit_deadline = st.checkbox("Limit to a closing-date window", value=False)
         deadline_days = st.number_input(
             "Closing within (days)", min_value=1, max_value=365,
             step=1, value=30, key="search_deadline_days",
-            help="Only affects this Search page.",
         )
-    with col2:
-        include_unknown = st.checkbox(
-            "Include grants with unknown deadlines",
-            help="Unknown dates cannot be confirmed to fall within the window.",
-        )
-
-    filter_col1, filter_col2 = st.columns(2)
-    with filter_col1:
+        include_unknown = st.checkbox("Include grants with unknown deadlines")
         status_filter = st.multiselect(
-            "Opportunity status",
-            ["Posted", "Forecasted"],
-            default=["Posted", "Forecasted"],
-            help="Status comes from the official Grants.gov search record.",
-        )
-        eligibility_filter = st.selectbox(
-            "Eligibility",
-            ["Any eligibility", "Needs Review", "Ineligible"],
-            help="Needs Review includes opportunities without confirmed eligibility.",
+            "Opportunity status", ["Posted", "Forecasted", "Unknown"],
+            default=["Posted", "Forecasted", "Unknown"],
         )
         sort_by = st.selectbox(
             "Sort results by",
-            [
-                "Recommended match",
-                "Award ceiling: high to low",
-                "Award ceiling: low to high",
-                "Closing date: soonest",
-                "Newest",
-            ],
+            ["Recommended match", "Award ceiling: high to low",
+             "Award ceiling: low to high", "Closing date: soonest", "Newest"],
         )
-    with filter_col2:
-        min_ceiling = st.number_input(
-            "Minimum award ceiling ($)",
-            min_value=0, step=50000, value=0,
-            help="Filters the official award ceiling, not total program funding.",
+        min_ceiling = st.number_input("Minimum award ceiling ($)", min_value=0, step=50000, value=0)
+        max_ceiling = st.number_input("Maximum award ceiling ($; 0 = no maximum)", min_value=0, step=50000, value=0)
+        minimum_ai_score = st.slider(
+            "Minimum AI Match Score", 0, 100, 60, key="search_minimum_ai_score",
         )
-        max_ceiling = st.number_input(
-            "Maximum award ceiling ($; 0 = no maximum)",
-            min_value=0, step=50000, value=0,
-            help="Filters the official award ceiling, not total program funding.",
+        include_uncertain = st.checkbox(
+            "Include uncertain eligibility", value=True,
+            key="search_include_uncertain_eligibility",
         )
+        research_depth = st.selectbox(
+            "AI Research Depth",
+            ["Quick", "Balanced", "Deep", "Custom"],
+            index=1,
+            key="search_research_depth",
+            help="Maximum number of new Azure evaluations for an explicit search or Analyze More action.",
+        )
+        custom_depth = 30
+        if research_depth == "Custom":
+            custom_depth = st.selectbox(
+                "Custom new evaluations",
+                list(range(5, 101, 5)),
+                index=5,
+                key="search_custom_depth",
+            )
+        research_limit = research_depth_limit(research_depth, custom_depth)
+        show_zero_matches = False
+        min_match_score = 0
+    eligibility_filter = "Any eligibility"
+    exclude_confirmed_ineligible = True
 
-    show_zero_matches = st.checkbox(
-        "Show zero-evidence matches (audit view)", value=False,
-        key="search_show_zero_matches",
-        help="Hide results with no matched strategic goal terms. This does not prove they are unrelated.",
-    )
-    min_match_score = st.slider(
-        "Baseline keyword score (audit only)", min_value=0, max_value=100,
-        value=0, step=1,
-        key="search_baseline_keyword_score",
-        help="Displayed for comparison only. AI recommendations use the Minimum AI Match Score below.",
-    )
-    minimum_ai_score = st.slider(
-        "Minimum AI Match Score", min_value=0, max_value=100,
-        value=60, step=1,
-        key="search_minimum_ai_score",
-        help="Applies only to successfully AI-evaluated opportunities; changing it makes no Azure calls.",
-    )
-    exclude_confirmed_ineligible = st.checkbox(
-        "Exclude confirmed ineligible grants", value=True,
-        key="search_exclude_confirmed_ineligible",
-        help="Uses only official applicant eligibility evidence. AI guesses never confirm ineligibility.",
-    )
-    include_uncertain = st.checkbox(
-        "Include uncertain eligibility", value=True,
-        key="search_include_uncertain_eligibility",
-        help="Keeps Needs Review and Not AI Evaluated opportunities visible with clear labels.",
-    )
-
-    if st.button("Search Grants", type="primary"):
-        if not query.strip():
-            st.warning("Enter a keyword to search Grants.gov.")
+    if st.button("Find Matching Grants", type="primary"):
+        retrieval_query = query.strip() or project_description.strip()
+        if not retrieval_query:
+            st.warning("Describe a project or add keywords to begin.")
             st.session_state.pop("search_last_results", None)
             return
         try:
             with st.spinner("Searching Grants.gov..."):
-                grants = get_grants(query.strip(), 100)
+                grants = get_grants(retrieval_query, 100)
         except GrantsAPIError as exc:
             st.error(str(exc))
             return
         st.session_state["search_last_results"] = {
-            "query": query.strip(), "grants": grants,
+            "query": retrieval_query, "grants": grants,
+            "agency": agency, "project": project_description.strip(),
         }
+        try:
+            with st.spinner(f"Analyzing up to {research_limit} new opportunities with AI..."):
+                research_result = prepare_ai_recommendations(
+                    agency,
+                    project_description=project_description,
+                    cache=AIRecommendationCache(),
+                    config=st.secrets,
+                    seed_grants=grants,
+                    max_new_evaluations=research_limit,
+                    batch_size=5,
+                )
+                st.session_state["search_research_summary"] = research_result.get("summary", {})
+        except DiscoveryError as exc:
+            st.warning(f"AI evaluation was not completed: {exc}")
 
     cached = st.session_state.get("search_last_results")
     if not cached:
         st.caption("Run a search to see live opportunity records.")
         return
 
-    if query.strip() != cached["query"]:
-        st.caption(f'Showing the previous search for "{cached["query"]}". Click Search Grants to refresh.')
+    if cached.get("agency") != agency or cached.get("project") != project_description.strip():
+        st.info("Agency or project changed. Submit Find Matching Grants to evaluate this request.")
+        return
+    retrieval_query = query.strip() or project_description.strip()
+    if retrieval_query != cached["query"]:
+        st.caption(f'Showing the previous search for "{cached["query"]}". Click Find Matching Grants to refresh.')
     grants = cached["grants"]
+    cached_for_search = AIRecommendationCache().get(agency, project_description) or {}
+    cached_records = cached_for_search.get("records", [])
+    cached_record_by_id = {
+        str(record.get("opportunity_id")): record
+        for record in cached_records
+        if record.get("opportunity_id")
+    }
+    grants = merge_cached_opportunities(grants, cached_records)
+    if st.session_state.get("search_research_depth"):
+        stored_summary = st.session_state.get("search_research_summary", {})
+        if stored_summary:
+            st.info(
+                f"Last research batch: {stored_summary.get('attempted', 0)} evaluation attempts, "
+                f"{stored_summary.get('succeeded', 0)} succeeded, "
+                f"{stored_summary.get('failed', 0)} failed; "
+                f"{stored_summary.get('skipped_ineligible', 0)} skipped after official eligibility screening."
+            )
+    if st.button("Analyze More", key="search_analyze_more"):
+        try:
+            with st.spinner(f"Analyzing up to {research_limit} new opportunities with AI..."):
+                research_result = prepare_ai_recommendations(
+                    agency,
+                    project_description=project_description,
+                    cache=AIRecommendationCache(),
+                    config=st.secrets,
+                    seed_grants=grants,
+                    max_new_evaluations=research_limit,
+                    batch_size=5,
+                )
+                st.session_state["search_research_summary"] = research_result.get("summary", {})
+            st.rerun()
+        except DiscoveryError as exc:
+            st.warning(f"AI evaluation was not completed: {exc}")
+    detail_cache = st.session_state.setdefault("grant_detail_cache", {})
+    for record in cached_records:
+        if record.get("official_details"):
+            detail_cache.setdefault(str(record["opportunity_id"]), record["official_details"])
+    for grant in grants:
+        details = detail_cache.get(str(grant.get("id")), {})
+        if details.get("opportunity_status"):
+            grant["oppStatus"] = details["opportunity_status"]
+        if details.get("close_date"):
+            grant["closeDate"] = details["close_date"]
     agency_options = ["All federal agencies"] + sorted({
         federal_agency(grant) for grant in grants
     })
     agency_filter = st.selectbox("Federal agency", agency_options)
     matching, unknown_count = filter_by_deadline(
-        grants, int(deadline_days), include_unknown,
+        grants, int(deadline_days) if limit_deadline else None, include_unknown,
     )
     matching = [
         grant for grant in matching
         if (not status_filter or grant_status(grant) in status_filter)
         and (agency_filter == "All federal agencies" or federal_agency(grant) == agency_filter)
     ]
-    st.write(
-        f'{len(matching)} opportunities shown from {len(grants)} retrieved '
-        f'Grants.gov records for "{cached["query"]}".'
-    )
+    st.write(f'{len(matching)} candidate opportunities loaded from Grants.gov for "{cached["query"]}".')
     if unknown_count:
         st.caption(
             f"{unknown_count} records have missing or unrecognized deadlines. "
@@ -418,6 +453,9 @@ def show_search():
         st.warning("No results in this deadline window. Try more days or a broader keyword.")
 
     detail_cache = st.session_state.setdefault("grant_detail_cache", {})
+    for record in cached_records:
+        if record.get("official_details"):
+            detail_cache.setdefault(str(record["opportunity_id"]), record["official_details"])
     # Explicitly user-triggered bounded screening, not 100 background API calls.
     unscreened = [
         g for g in matching
@@ -445,6 +483,15 @@ def show_search():
         summary = eligibility_summary(
             detail_cache.get(str(grant.get("id"))), agency
         )
+        cached_record = cached_record_by_id.get(str(grant.get("id")), {})
+        if cached_record.get("eligibility_status") == "Ineligible":
+            summary = {
+                "status": "Ineligible",
+                "explanation": cached_record.get("eligibility_reason")
+                or "Official eligibility excludes this applicant.",
+                "next_action": "Do not apply directly; review the official notice for any alternate applicant route.",
+                "excluded": True,
+            }
         grant["_excluded"] = summary["excluded"]
         grant["_eligibility_status"] = "Ineligible" if summary["excluded"] else "Needs Review"
         grant["_eligibility_reason"] = summary["explanation"]
@@ -475,9 +522,6 @@ def show_search():
         max_ceiling=float(max_ceiling) if max_ceiling else None,
     )
     ai_candidate_pool = list(ranked)
-    excluded_count = sum(grant["_excluded"] for grant in ranked)
-    if excluded_count:
-        st.info(f"{excluded_count} explicitly excluded opportunity(ies) remain visible below the other results.")
     semantic_results = {}
     recommendation_cache = AIRecommendationCache()
     cached_state = cached_semantic_results(
@@ -497,22 +541,11 @@ def show_search():
         )
     for grant in ai_candidate_pool:
         grant["_agency_namespace"] = agency
-    if not cached_recommendations and st.button(
-        "Generate AI recommendations (up to 5 bounded evaluations)",
-        key="generate_ai_recommendations",
-    ):
-        try:
-            with st.spinner("Preparing bounded AI recommendations..."):
-                prepare_ai_recommendations(
-                    agency,
-                    project_description=project_description,
-                    cache=recommendation_cache,
-                    config=st.secrets,
-                )
-            st.success("AI recommendations saved. Rerun the page to load them.")
-            st.rerun()
-        except DiscoveryError as exc:
-            st.error(str(exc))
+    if cached_recommendations:
+        st.caption(
+            "Search submission has already evaluated the current bounded batch. "
+            "Cached results are reused on reruns and filter changes."
+        )
     semantic_by_id = {
         key.split("::", 1)[1]: value
         for key, value in semantic_results.items()
@@ -521,8 +554,13 @@ def show_search():
     recommendation_records = [
         {
             "opportunity_id": str(grant.get("id")),
-            "eligibility_status": grant["_eligibility_status"],
+            "eligibility_status": cached_record_by_id.get(
+                str(grant.get("id")), {}
+            ).get("eligibility_status", grant["_eligibility_status"])
+            if not grant["_excluded"] else "Ineligible",
             "eligibility_reason": grant.get("_eligibility_reason"),
+            "opportunity_status": grant_status(grant),
+            "close_date": grant.get("closeDate"),
         }
         for grant in ranked
     ]
@@ -540,6 +578,8 @@ def show_search():
     }
     for grant in ranked:
         grant["_recommendation"] = classification_by_id.get(str(grant.get("id")))
+    if not include_uncertain:
+        ranked = [grant for grant in ranked if grant["_eligibility_status"] != "Needs Review"]
     recommended, review = partition_recommendation_results(ranked, classified)
     recommended_ranked = sort_results(
         recommended,
@@ -553,10 +593,14 @@ def show_search():
     )
     ranked = recommended_ranked
     if not ranked:
-        st.info(
-            "No AI-evaluated opportunities meet the current relevance threshold. "
-            "Unevaluated and below-threshold records are available in the review section."
-        )
+        counts = classified["counts"]
+        if counts["not_evaluated"] or counts["needs_evidence_review"]:
+            st.info("Evaluation is incomplete. Pending, failed, or evidence-review records remain; see Other results and research progress.")
+        else:
+            st.info("No qualifying AI match meets the current threshold and filters.")
+        if st.session_state.get("search_research_summary", {}).get("failed"):
+            st.warning("Technical evaluation failures occurred. Analyze More can retry failed records.")
+        st.caption("Deadline and status filters also apply to cached AI results. Widen the deadline window or include unknown deadlines to review more records.")
     decisions = st.session_state.setdefault("grant_decisions", {})
     for key, record in saved_records.items():
         if record.get("decision") or record.get("notes"):
@@ -568,29 +612,27 @@ def show_search():
     missing_ceiling = sum(grant.get("_award_ceiling") is None for grant in ranked)
     unknown_status = sum(grant_status(grant) == "Unknown" for grant in ranked)
     unverified_goals = sum(not grant["plan_verified"] for grant in ranked)
-    st.subheader("Results Overview")
-    st.write(
-        f"{len(grants)} retrieved · "
-        f"{classified['counts']['ai_evaluated']} AI evaluated · "
-        f"{classified['counts']['recommended']} recommended · "
-        f"{classified['counts']['below_threshold']} below threshold · "
-        f"{classified['counts']['confirmed_ineligible']} confirmed ineligible · "
-        f"{classified['counts']['not_evaluated']} pending evaluation · "
-        f"{sum((agency + '::' + str(grant.get('id'))) in decisions for grant in ranked)} decisions saved"
-    )
-    with st.expander("Data quality details"):
+    st.subheader("Recommended for Your Project")
+    with st.expander("About these results"):
+        research_summary = st.session_state.get("search_research_summary", {})
         st.caption(
-            f"Classified result pool: {classified['counts']['retrieved']} · "
-            f"Below AI threshold: {classified['counts']['below_threshold']} · "
-            f"Missing deadlines: {missing_deadline} · Missing award ceilings: {missing_ceiling} · "
-            f"Unknown statuses: {unknown_status} · Agencies without verified goals: {unverified_goals}"
+            f"{classified['counts']['ai_evaluated']} of {classified['counts']['retrieved']} "
+            "records in the filtered pool have AI evaluations. Only a bounded batch is "
+            "evaluated per submission; remaining records are pending, not rejected."
         )
-        st.caption("Award ceiling is the maximum award per opportunity. It is not total program funding.")
-        st.caption("Strategic relevance is a deterministic topic-overlap heuristic, not an AI score, eligibility decision, or award probability.")
-    if ranked and not ranked[0]["plan_verified"]:
-        st.info("No verified strategic goals have been extracted for this agency yet. Results are shown without a match score; eligibility still needs human review.")
-    else:
-        st.caption("Match scores are a simple, preliminary strategic-topic overlap heuristic, NOT grant eligibility or award probability.")
+        if research_summary:
+            st.caption(
+                f"Last batch summary: {research_summary.get('retrieved', 0)} retrieved (before deduplication), "
+                f"{research_summary.get('deduplicated', 0)} deduplicated, "
+                f"{research_summary.get('official_details_screened', 0)} official details screened; "
+                f"{research_summary.get('attempted', 0)} evaluation attempts and "
+                f"{research_summary.get('succeeded', 0)} succeeded; "
+                f"{research_summary.get('failed', 0)} failed; "
+                f"{research_summary.get('remaining_candidates', 0)} retrieved candidates were not processed in this batch."
+            )
+        st.caption(f"Current filtered dataset: {len(recommended_ranked)} recommended · {classified['counts']['not_evaluated']} pending/failed · {classified['counts']['needs_evidence_review']} requiring evidence, purpose or readiness review.")
+        st.caption("AI scores are relevance assessments, not probabilities of eligibility, success, or award.")
+        st.caption(f"Below threshold: {classified['counts']['below_threshold']} · Pending: {classified['counts']['not_evaluated']} · Evidence review: {classified['counts']['needs_evidence_review']}.")
     st.download_button(
         "Export visible results (CSV)",
         decision_csv(ranked, decisions),
@@ -615,31 +657,14 @@ def show_search():
         semantic = semantic_results.get(workspace_key)
         with st.container(border=True):
             st.subheader(title)
-            st.write(f"**Federal agency:** {federal_agency_name}")
-            st.write(f"**Deadline:** {closing} · **Status:** {grant_status(grant)}")
+            st.write(f"**Opportunity ID:** {opportunity_id} · **Deadline:** {closing}")
             st.write(
                 f"**Award ceiling:** {_format_amount(award_ceiling)} · "
                 f"**Total program funding:** {_format_amount(total_funding)}"
             )
-            st.write(f"**Baseline Keyword Score:** {relevance_summary(grant)}")
-            if project_description.strip():
-                project_score = grant.get("_project_relevance_score")
-                project_label = (
-                    f"{project_score}/100 term overlap"
-                    if project_score is not None else "Not evaluated: official text unavailable"
-                )
-                st.write(f"**Project relevance (baseline):** {project_label}")
+            st.write(f"**Federal agency:** {federal_agency_name}")
             if semantic and semantic.get("status") == "Evaluated":
-                st.write(
-                    f"**AI Strategic Relevance:** "
-                    f"{semantic.get('strategic_relevance_score') if semantic.get('strategic_relevance_score') is not None else 'Not evaluated'}/100"
-                )
-                if project_description.strip():
-                    st.write(
-                        f"**AI Project Relevance:** "
-                        f"{semantic.get('project_relevance_score') if semantic.get('project_relevance_score') is not None else 'Not evaluated'}/100 "
-                        f"({semantic['confidence']} confidence)"
-                    )
+                st.write(f"**AI project fit:** {semantic.get('project_relevance_score', 'Unavailable')}/100 · {semantic['confidence']} confidence")
             recommendation = grant.get("_recommendation")
             if recommendation:
                 st.write(
@@ -654,26 +679,42 @@ def show_search():
                     "**AI Semantic Relevance:** Not AI Evaluated"
                     + (f" — {semantic['evidence_grounded_explanation']}" if semantic else "")
                 )
-            st.caption("Baseline Keyword Score is separate from AI Semantic Relevance.")
             status_label = "Ineligible (confirmed exclusion)" if eligibility["excluded"] else eligibility["status"]
             st.write(f"**Eligibility:** {status_label}")
-            st.caption(eligibility["explanation"])
-            st.write(f"**Recommended next action:** {eligibility['next_action']}")
+            strategic = semantic.get("strategic_relevance_score") if semantic and agency in VERIFIED_GOALS else None
+            st.write("**Verified strategic-goal relevance:** " + (f"{strategic}/100" if strategic is not None else "Unavailable — no verified assessment."))
+            st.write("**Funding purpose / allowable activities:** " + str((semantic or {}).get("funding_purpose_fit") or "Unavailable; review official notice."))
+            st.write(f"**Status / readiness:** {grant_status(grant)} · Listed application date {closing}. Application readiness requires coordinator verification.")
+            if (details or {}).get("deadline_note"):
+                st.caption("Official timing note: " + details["deadline_note"])
+            for concern in (semantic or {}).get("eligibility_concerns", []):
+                st.warning(f"Applicant / partnership condition: {concern}")
+            st.caption("Evidence snippets were checked against supplied official text; this is not independent proof of project suitability.")
+            if eligibility["status"] == "Needs Review":
+                st.caption("Eligibility needs official applicant verification.")
+            st.write(
+                f"**Why it matches:** "
+                f"{semantic.get('evidence_grounded_explanation', 'AI explanation unavailable.') if semantic else 'AI explanation unavailable.'}"
+            )
+            st.write(
+                f"**Next action:** "
+                f"{semantic.get('recommended_next_action', eligibility['next_action']) if semantic else eligibility['next_action']}"
+            )
             decision_col, notes_col = st.columns([1, 2])
             with decision_col:
                 decision = st.selectbox(
                     "Decision",
                     ["", "Pursue", "Maybe", "Pass"],
                     index=["", "Pursue", "Maybe", "Pass"].index(saved.get("decision", "")),
-                    key=f"decision_{decision_key}",
+                    key=f"decision_{workspace_key}",
                 )
             with notes_col:
                 notes = st.text_input(
                     "Coordinator notes (optional)",
                     value=saved.get("notes", ""),
-                    key=f"notes_{decision_key}",
+                    key=f"notes_{workspace_key}",
                 )
-            if st.button("Save decision", key=f"save_decision_{decision_key}"):
+            if st.button("Save decision", key=f"save_decision_{workspace_key}"):
                 if not decision:
                     st.warning("Choose Pursue, Maybe, or Pass before saving.")
                 else:
@@ -692,7 +733,7 @@ def show_search():
                     st.success("Decision saved for this session.")
             if st.button(
                 "Remove from My Grants" if bookmarked else "Save to My Grants",
-                key=f"bookmark_{decision_key}",
+                key=f"bookmark_{workspace_key}",
             ):
                 if bookmarked:
                     store.remove(agency, decision_key)
@@ -716,6 +757,7 @@ def show_search():
                             detail_cache[detail_key] = get_grant_details(opportunity_id)
                         details = detail_cache[detail_key]
                         eligibility = eligibility_summary(details, agency)
+                        st.rerun()
                     except GrantsAPIError as exc:
                         st.error(str(exc))
                 if details:
@@ -745,7 +787,13 @@ def show_search():
                         if semantic:
                             st.write("**Semantic evaluation evidence:**")
                             if semantic["status"] == "Evaluated":
+                                st.write(
+                                    f"**Project fit:** {semantic.get('project_relevance_score', 'Unavailable')}/100 · "
+                                    f"**Strategic fit:** {semantic.get('strategic_relevance_score', 'Unavailable')}/100"
+                                )
                                 st.write(semantic["evidence_grounded_explanation"])
+                                if semantic.get("funding_purpose_fit"):
+                                    st.write(f"**Funding-purpose fit:** {semantic['funding_purpose_fit']}")
                                 if semantic["relevant_opportunity_evidence"]:
                                     st.caption("Official opportunity evidence:")
                                     for item in semantic["relevant_opportunity_evidence"]:
@@ -770,7 +818,7 @@ def show_search():
                         if not semantic:
                             st.caption(
                                 "AI matching has not been generated for this opportunity. "
-                                "Use the bounded preparation action above; page reruns do not make paid requests."
+                                "Submit Find Matching Grants to run one bounded AI batch; page reruns do not make paid requests."
                             )
                 elif opportunity_id:
                     st.caption("Load official details to view analysis and evidence.")
@@ -779,11 +827,12 @@ def show_search():
                     f"https://www.grants.gov/search-results-detail/{opportunity_id}",
                 )
     with st.expander(
-        f"Review unevaluated and non-recommended results ({len(review_ranked)})",
+        f"Other results ({len(review_ranked)})",
         expanded=False,
     ):
         st.caption(
-            "These records are not AI recommendations. Review official evidence before acting."
+            "Below-threshold, pending, failed, and evidence-review records are shown here. "
+            "Confirmed ineligible opportunities are excluded."
         )
         for grant in review_ranked:
             recommendation = grant.get("_recommendation") or {}
@@ -793,11 +842,7 @@ def show_search():
                 f"**{title}** · {status} · "
                 f"Official deadline: {grant.get('closeDate') or 'Not reported'}"
             )
-            st.caption(
-                f"Baseline project relevance: "
-                f"{grant.get('_project_relevance_score') if project_description.strip() else 'Not evaluated'}"
-                " · Confirm official details before deciding."
-            )
+            st.caption(recommendation.get("reason") or "Not AI recommended. Confirm official details and eligibility before deciding.")
             opportunity_id = grant.get("id")
             if opportunity_id:
                 st.link_button(

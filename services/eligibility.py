@@ -10,6 +10,19 @@ def screen_eligibility(details, agency_name):
     if not notes.strip() and not types.strip() and not description.strip():
         return {"status": "Needs Review", "reason": "No applicant eligibility information returned."}
 
+    # Observed NSF exclusive applicant list: NC state departments are neither
+    # an IHE nor one of the specified non-academic nonprofit organizations.
+    nsf_only = re.search(
+        r"proposals may only be submitted by the following:.{0,600}?"
+        r"non-profit, non-academic organizations:.{0,600}?"
+        r"institutions of higher education", notes, re.IGNORECASE | re.DOTALL,
+    )
+    if (nsf_only and agency_name.startswith("Department of ")
+            and not re.search(r"(?:state|local|county|city) governments?", notes, re.IGNORECASE)):
+        return {"status": "Ineligible",
+                "reason": "Official exclusive applicant list permits specified nonprofits and higher education institutions, not the selected NC state department as direct applicant. A partnership route requires separate verification.",
+                "evidence": nsf_only.group(0).strip()}
+
     # Narrow evidence rule for the observed EPA tribal-only opportunity.
     # Do not infer exclusions from titles or incidental mentions of Tribes.
     official_text = " ".join((notes, description))

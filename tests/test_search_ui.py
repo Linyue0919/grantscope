@@ -21,12 +21,155 @@ from services.discovery import (
     diversified_retrieval_queries,
     generate_dashboard_shortlist,
     get_cached_ai_shortlist,
+    merge_cached_opportunities,
     prepare_ai_recommendations,
+    research_depth_limit,
 )
 from tempfile import TemporaryDirectory
 
 
 class SearchPresentationTests(unittest.TestCase):
+    def test_research_depth_limits_are_bounded(self):
+        self.assertEqual(research_depth_limit("Quick"), 10)
+        self.assertEqual(research_depth_limit("Balanced"), 30)
+        self.assertEqual(research_depth_limit("Deep"), 50)
+        self.assertEqual(research_depth_limit("Custom", 37), 35)
+        self.assertEqual(research_depth_limit("Custom", 1000), 100)
+
+    def test_progressive_batches_persist_after_each_batch(self):
+        grants = [{"id": str(index), "title": f"Grant {index}"} for index in range(10)]
+        evaluations = []
+
+        class RecordingCache(AIRecommendationCache):
+            def __init__(self, path):
+                super().__init__(path)
+                self.save_sizes = []
+
+            def save(self, agency, project_description, records, refreshed_at):
+                self.save_sizes.append(len(records))
+                super().save(agency, project_description, records, refreshed_at)
+
+        def evaluate(*args, **kwargs):
+            evaluations.append(args[2]["id"])
+            return {
+                "status": "Evaluated",
+                "semantic_relevance_score": 80,
+                "project_relevance_score": 80,
+                "evidence_verified": True,
+            }
+
+        with TemporaryDirectory() as directory:
+            cache = RecordingCache(f"{directory}/ai.json")
+            result = prepare_ai_recommendations(
+                "Department of Environmental Quality",
+                project_description="water quality",
+                cache=cache,
+                seed_grants=grants,
+                fetch_grants=lambda query, rows: [],
+                fetch_details=lambda identifier: {"description": "Official water opportunity"},
+                evaluate=evaluate,
+                config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                max_new_evaluations=10,
+                batch_size=5,
+            )
+        self.assertEqual(len(evaluations), 10)
+        self.assertEqual(cache.save_sizes, [5, 10])
+        self.assertEqual(result["summary"]["succeeded"], 10)
+
+    def test_resume_only_evaluates_new_opportunities(self):
+        grants = [{"id": str(index), "title": f"Grant {index}"} for index in range(6)]
+        calls = []
+
+        def evaluate(*args, **kwargs):
+            calls.append(args[2]["id"])
+            return {"status": "Evaluated", "semantic_relevance_score": 70}
+
+        with TemporaryDirectory() as directory:
+            cache = AIRecommendationCache(f"{directory}/ai.json")
+            prepare_ai_recommendations(
+                "Department of Environmental Quality",
+                project_description="water quality",
+                cache=cache,
+                seed_grants=grants,
+                fetch_grants=lambda query, rows: [],
+                fetch_details=lambda identifier: {"description": "Official water opportunity"},
+                evaluate=evaluate,
+                config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                max_new_evaluations=2,
+            )
+            prepare_ai_recommendations(
+                "Department of Environmental Quality",
+                project_description="water quality",
+                cache=cache,
+                seed_grants=grants,
+                fetch_grants=lambda query, rows: [],
+                fetch_details=lambda identifier: {"description": "Official water opportunity"},
+                evaluate=evaluate,
+                config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                max_new_evaluations=4,
+            )
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(len(set(calls[:2]).intersection(calls[2:])), 0)
+
+    def test_ineligible_candidates_are_screened_before_ai(self):
+        grants = [
+            {"id": "excluded", "title": "Water tribal-only grant"},
+            {"id": "eligible", "title": "Water grant"},
+        ]
+        calls = []
+
+        def evaluate(*args, **kwargs):
+            calls.append(args[2]["id"])
+            return {"status": "Evaluated", "semantic_relevance_score": 75}
+
+        def details(identifier):
+            if identifier == "excluded":
+                return {
+                    "description": (
+                        "Eligible applicants are federally recognized Tribes "
+                        "and intertribal consortia."
+                    )
+                }
+            return {"description": "Official water opportunity"}
+
+        with TemporaryDirectory() as directory:
+            result = prepare_ai_recommendations(
+                "Department of Environmental Quality",
+                project_description="water quality",
+                cache=AIRecommendationCache(f"{directory}/ai.json"),
+                seed_grants=grants,
+                fetch_grants=lambda query, rows: [],
+                fetch_details=details,
+                evaluate=evaluate,
+                config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                max_new_evaluations=1,
+            )
+        self.assertEqual(calls, ["eligible"])
+        self.assertEqual(result["summary"]["skipped_ineligible"], 1)
+
+    def test_partial_ai_failures_are_reported_without_fabricated_scores(self):
+        grants = [{"id": str(index), "title": f"Grant {index}"} for index in range(3)]
+
+        def evaluate(*args, **kwargs):
+            if args[2]["id"] == "1":
+                return {"status": "Not AI Evaluated", "semantic_relevance_score": None}
+            return {"status": "Evaluated", "semantic_relevance_score": 75}
+
+        with TemporaryDirectory() as directory:
+            result = prepare_ai_recommendations(
+                "Department of Environmental Quality",
+                project_description="water quality",
+                cache=AIRecommendationCache(f"{directory}/ai.json"),
+                seed_grants=grants,
+                fetch_grants=lambda query, rows: [],
+                fetch_details=lambda identifier: {"description": "Official water opportunity"},
+                evaluate=evaluate,
+                config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                max_new_evaluations=3,
+            )
+        self.assertEqual(result["summary"]["failed"], 1)
+        failed = next(record for record in result["records"] if record["opportunity_id"] == "1")
+        self.assertIsNone(failed["semantic"]["semantic_relevance_score"])
     def test_unknown_eligibility_is_needs_review(self):
         summary = eligibility_summary({}, "Department of Environmental Quality")
         self.assertEqual(summary["status"], "Needs Review")
@@ -279,6 +422,39 @@ class SearchPresentationTests(unittest.TestCase):
                 88,
             )
 
+    def test_repeated_search_preparation_reuses_cached_evaluations(self):
+        grants = [{"id": "1", "title": "Cybersecurity education"}]
+        calls = []
+
+        def evaluate(*args, **kwargs):
+            calls.append(args[2]["id"])
+            return {
+                "status": "Evaluated",
+                "semantic_relevance_score": 90,
+                "strategic_relevance_score": None,
+                "project_relevance_score": 90,
+                "evidence_verified": True,
+                "evidence_grounded_explanation": "Official evidence supports training.",
+            }
+
+        with TemporaryDirectory() as directory:
+            cache = AIRecommendationCache(f"{directory}/ai.json")
+            for _ in range(2):
+                prepare_ai_recommendations(
+                    "Department of Environmental Quality",
+                    project_description="Cybersecurity education",
+                    cache=cache,
+                    seed_grants=grants,
+                    fetch_grants=lambda query, rows: [],
+                    fetch_details=lambda identifier: {
+                        "description": "Official cybersecurity education opportunity."
+                    },
+                    evaluate=evaluate,
+                    config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                    max_candidates=5,
+                )
+        self.assertEqual(calls, ["1"])
+
     def test_cached_recommendation_read_does_not_invoke_generation(self):
         with TemporaryDirectory() as directory:
             cache = AIRecommendationCache(f"{directory}/ai.json")
@@ -299,11 +475,13 @@ class SearchPresentationTests(unittest.TestCase):
             )
 
     def test_ai_threshold_boundaries_and_project_score_selection(self):
-        record = {"opportunity_id": "1", "eligibility_status": "Needs Review"}
+        record = {"opportunity_id": "1", "eligibility_status": "Needs Review", "opportunity_status": "Posted", "close_date": "2027-01-25"}
         semantic = {
             "status": "Evaluated",
             "strategic_relevance_score": 59,
             "project_relevance_score": 81,
+            "evidence_verified": True,
+            "funding_purpose_status": "Supported", "funding_purpose_fit": "Official activities support this purpose.",
         }
         self.assertEqual(
             classify_recommendation(record, semantic, minimum_score=60)["classification"],
@@ -347,7 +525,7 @@ class SearchPresentationTests(unittest.TestCase):
 
     def test_uncertain_and_missing_ai_scores_are_not_below_threshold(self):
         records = [
-            {"opportunity_id": "1", "eligibility_status": "Needs Review"},
+            {"opportunity_id": "1", "eligibility_status": "Needs Review", "opportunity_status": "Posted", "close_date": "2027-01-25"},
             {"opportunity_id": "2", "eligibility_status": "Needs Review"},
         ]
         result = classify_recommendations(
@@ -365,16 +543,16 @@ class SearchPresentationTests(unittest.TestCase):
 
     def test_only_evaluated_records_meeting_threshold_are_recommended(self):
         records = [
-            {"opportunity_id": "1", "eligibility_status": "Needs Review"},
+            {"opportunity_id": "1", "eligibility_status": "Needs Review", "opportunity_status": "Posted", "close_date": "2027-01-25"},
             {"opportunity_id": "2", "eligibility_status": "Needs Review"},
             {"opportunity_id": "3", "eligibility_status": "Ineligible"},
         ]
         result = classify_recommendations(
             records,
             {
-                "1": {"status": "Evaluated", "project_relevance_score": 85},
+                "1": {"status": "Evaluated", "project_relevance_score": 85, "evidence_verified": True, "funding_purpose_status": "Supported", "funding_purpose_fit": "Official activities support this purpose."},
                 "2": {"status": "Not AI Evaluated"},
-                "3": {"status": "Evaluated", "project_relevance_score": 100},
+                "3": {"status": "Evaluated", "project_relevance_score": 100, "evidence_verified": True},
             },
             minimum_score=60,
             include_uncertain=False,
@@ -405,6 +583,60 @@ class SearchPresentationTests(unittest.TestCase):
         recommended, review = partition_recommendation_results(grants, result)
         self.assertEqual(recommended, [])
         self.assertEqual(len(review), 13)
+
+    def test_confirmed_ineligible_is_hidden_from_primary_and_other_results(self):
+        grants = [
+            {"id": "eligible", "title": "Good fit"},
+            {"id": "excluded", "title": "Restricted"},
+            {"id": "pending", "title": "Pending"},
+        ]
+        result = classify_recommendations(
+            [
+                {"opportunity_id": "eligible", "eligibility_status": "Needs Review", "opportunity_status": "Posted", "close_date": "2027-01-25"},
+                {"opportunity_id": "excluded", "eligibility_status": "Ineligible"},
+                {"opportunity_id": "pending", "eligibility_status": "Needs Review"},
+            ],
+            {
+                "eligible": {
+                    "status": "Evaluated", "project_relevance_score": 90,
+                    "evidence_verified": True, "funding_purpose_status": "Supported", "funding_purpose_fit": "Official activities support this purpose.",
+                },
+                "pending": {"status": "Not AI Evaluated"},
+            },
+            minimum_score=60,
+            project_description="Good fit",
+        )
+        primary, other = partition_recommendation_results(grants, result)
+        self.assertEqual([item["id"] for item in primary], ["eligible"])
+        self.assertEqual([item["id"] for item in other], ["pending"])
+
+    def test_cached_evaluations_are_merged_when_outside_initial_search_pool(self):
+        merged = merge_cached_opportunities(
+            [{"id": "seed", "title": "Initial result"}],
+            [{
+                "opportunity_id": "ai-1",
+                "title": "Diversified result",
+                "federal_agency": "Agency",
+                "close_date": "12/31/2026",
+            }],
+        )
+        self.assertEqual(
+            [grant["id"] for grant in merged],
+            ["seed", "ai-1"],
+        )
+        self.assertEqual(merged[1]["title"], "Diversified result")
+
+    def test_cached_merge_deduplicates_by_official_opportunity_id(self):
+        merged = merge_cached_opportunities(
+            [{"id": "1", "title": "Current title", "agency": "Current agency"}],
+            [{
+                "opportunity_id": "1",
+                "title": "Cached title",
+                "federal_agency": "Cached agency",
+            }],
+        )
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["title"], "Current title")
 
 
 if __name__ == "__main__":

@@ -137,6 +137,11 @@ def get_grant_details(opportunity_id):
         for item in applicant_types if isinstance(item, dict)
     ]
     return {
+        "opportunity_status": str(data.get("ost") or "Unknown"),
+        "close_date": str(synopsis.get("responseDateStr") or "")[:10] or None,
+        "estimated_close_date": str(synopsis.get("estApplicationResponseDateStr") or "")[:10] or None,
+        "deadline_note": str(synopsis.get("responseDateDesc") or ""),
+        "funding_activity_description": plain_official_text(synopsis.get("fundingActivityCategoryDesc")),
         "award_floor": _amount(synopsis.get("awardFloor")),
         "award_ceiling": _amount(synopsis.get("awardCeiling")),
         "total_funding": _first_amount(
