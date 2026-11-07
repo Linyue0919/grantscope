@@ -9,7 +9,7 @@ VERIFIED_GOALS = {
         "plan_period": "2025–2029",
         "goals": [
             {"text": "Protect water quality and invest in drinking water and wastewater infrastructure", "page": 4, "terms": ["water", "drinking water", "wastewater", "water quality", "stormwater", "watershed"]},
-            {"text": "Support disaster recovery, flood resilience, and community restoration", "page": 6, "terms": ["flood", "resilience", "disaster", "hurricane", "recovery"]},
+            {"text": "Support disaster recovery, flood resilience, and community restoration", "page": 6, "terms": ["flood resilience", "disaster recovery", "flood recovery", "hurricane recovery", "disaster preparedness"]},
             {"text": "Reduce PFAS and other forever chemical contamination", "page": 8, "terms": ["pfas", "forever chemicals", "contamination", "pollution"]},
             {"text": "Strengthen environmental infrastructure", "page": 10, "terms": ["environmental infrastructure", "infrastructure", "utilities"]},
             {"text": "Improve public participation in environmental decisions", "page": 11, "terms": ["public participation", "environmental justice", "community engagement"]},
