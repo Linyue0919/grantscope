@@ -1,10 +1,13 @@
+"""Live federal opportunity search with transparent deadline filtering."""
 from datetime import date, datetime
 import streamlit as st
-from services.grants_api import get_grants
+
+from services.grants_api import get_grants, GrantsAPIError
 from modules.profile import get_preferences
 
 
 def parse_close_date(value):
+    """Accept common Grants.gov date formats; never guess an invalid date."""
     if not value:
         return None
     raw = str(value).strip()
@@ -12,16 +15,33 @@ def parse_close_date(value):
         try:
             return datetime.strptime(raw[:10], fmt).date()
         except ValueError:
-            pass
+            continue
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
     except ValueError:
         return None
 
 
+def filter_by_deadline(grants, deadline_days, include_unknown=False, today=None):
+    today = today or date.today()
+    matching, unknown = [], 0
+    for grant in grants:
+        closing = parse_close_date(grant.get("closeDate"))
+        if closing is None:
+            unknown += 1
+            if include_unknown:
+                matching.append(grant)
+        elif 0 <= (closing - today).days <= deadline_days:
+            matching.append(grant)
+    return sorted(
+        matching,
+        key=lambda grant: parse_close_date(grant.get("closeDate")) or date.max,
+    ), unknown
+
+
 def show_search():
     st.header("Search Federal Grants")
-    st.write("Discover federal funding opportunities for NC agencies.")
+    st.write("Discover live federal funding opportunities for NC agencies.")
     prefs = get_preferences()
     st.info(f'Current agency: {prefs["agency"]}. Search defaults come from Agency Profile.')
 
@@ -30,9 +50,11 @@ def show_search():
         st.session_state["search_profile_signature"] = signature
         st.session_state["search_deadline_days"] = int(prefs["deadline_days"])
         st.session_state["search_query"] = " ".join(prefs["priorities"][:1]).lower()
+        st.session_state.pop("search_last_results", None)
 
     query = st.text_input(
-        "Search opportunities", key="search_query",
+        "Search opportunities",
+        key="search_query",
         placeholder="e.g. clean water, transportation, rural health",
     )
     col1, col2 = st.columns(2)
@@ -40,72 +62,79 @@ def show_search():
         deadline_days = st.number_input(
             "Closing within (days)", min_value=1, max_value=365,
             step=1, key="search_deadline_days",
-            help="Change this for one search without changing your saved Profile.",
+            help="Override your saved Profile deadline for this search.",
         )
     with col2:
         include_unknown = st.checkbox(
-            "Include grants with unknown deadlines", value=False,
-            help="Unknown deadlines cannot be confirmed to fall within your window.",
+            "Include grants with unknown deadlines",
+            help="Unknown dates cannot be confirmed to fall within the window.",
         )
 
     st.caption(
         f'Profile preferences: minimum award ${prefs["minimum_award"]:,}; '
         f'minimum match score {prefs["minimum_match_score"]}/100. '
-        "These are not active filters yet: award amounts and agency eligibility "
-        "require additional official details; match scoring requires an evaluation model."
+        "These are NOT active filters: award amounts and agency eligibility "
+        "need official detail verification; match scoring needs a separate model."
     )
 
     if st.button("Search Grants", type="primary"):
         if not query.strip():
-            st.warning("Enter a keyword or select a strategic priority in Profile.")
+            st.warning("Enter a keyword or choose a strategic priority in Profile.")
+            st.session_state.pop("search_last_results", None)
             return
         try:
-            with st.spinner("Searching live Grants.gov opportunities..."):
+            with st.spinner("Searching Grants.gov..."):
                 grants = get_grants(query.strip(), 100)
-        except Exception as error:
-            st.error(f"Unable to retrieve Grants.gov records: {error}")
+        except GrantsAPIError as exc:
+            st.error(str(exc))
             return
+        st.session_state["search_last_results"] = {
+            "query": query.strip(), "grants": grants,
+        }
 
-        today = date.today()
-        matching = []
-        unknown_count = 0
-        for grant in grants:
-            closing = parse_close_date(grant.get("closeDate"))
-            if closing is None:
-                unknown_count += 1
-                if include_unknown:
-                    matching.append(grant)
-                continue
-            days_left = (closing - today).days
-            if 0 <= days_left <= deadline_days:
-                matching.append(grant)
+    cached = st.session_state.get("search_last_results")
+    if not cached:
+        st.caption("Run a search to see live opportunity records.")
+        return
 
-        st.write(
-            f"Retrieved {len(grants)} Grants.gov records for this keyword; "
-            f"{len(matching)} meet the deadline display criteria."
+    if query.strip() != cached["query"]:
+        st.caption(f'Showing the previous search for "{cached["query"]}". Click Search Grants to refresh.')
+    grants = cached["grants"]
+    matching, unknown_count = filter_by_deadline(
+        grants, int(deadline_days), include_unknown,
+    )
+    st.write(
+        f'{len(matching)} opportunities shown from {len(grants)} retrieved '
+        f'Grants.gov records for "{cached["query"]}".'
+    )
+    if unknown_count:
+        st.caption(
+            f"{unknown_count} records have missing or unrecognized deadlines. "
+            "Verify dates on the official listing."
         )
-        if unknown_count:
-            st.caption(
-                f"{unknown_count} records have missing or unrecognized deadlines; "
-                "check the official listing before relying on dates."
-            )
-        if len(grants) == 100:
-            st.caption("Showing results from the first 100 API records, not an exhaustive search.")
-        if not matching:
-            st.warning("No results in this deadline window. Try a broader keyword or more days.")
+    if len(grants) >= 100:
+        st.warning(
+            "Only the first 100 search records were requested; this is NOT "
+            "an exhaustive result set. Try a narrower keyword."
+        )
+    if not matching:
+        st.warning("No results in this deadline window. Try more days or a broader keyword.")
 
-        for grant in matching:
-            title = grant.get("title") or "Untitled Grant"
-            agency = grant.get("agency") or "Unknown federal agency"
-            closing = grant.get("closeDate") or "Not specified"
-            opportunity_id = grant.get("id")
-            with st.container(border=True):
-                st.subheader(title)
-                st.write(f"**Federal agency:** {agency}")
-                st.write(f"**Closing date (Grants.gov):** {closing}")
-                st.caption("Agency eligibility, award amount, and match score: not yet verified.")
-                if opportunity_id:
-                    st.link_button(
-                        "View Official Opportunity",
-                        f"https://www.grants.gov/search-results-detail/{opportunity_id}",
-                    )
+    for grant in matching:
+        title = grant.get("title") or "Untitled Grant"
+        agency = grant.get("agency") or "Unknown federal agency"
+        closing = grant.get("closeDate") or "Not specified"
+        opportunity_id = grant.get("id")
+        with st.container(border=True):
+            st.subheader(title)
+            st.write(f"**Federal agency:** {agency}")
+            st.write(f"**Closing date (Grants.gov):** {closing}")
+            st.caption(
+                "NC agency eligibility, award amount and match score have "
+                "NOT been verified. This is a keyword search, not an AI recommendation."
+            )
+            if opportunity_id:
+                st.link_button(
+                    "View Official Opportunity",
+                    f"https://www.grants.gov/search-results-detail/{opportunity_id}",
+                )
