@@ -1,4 +1,6 @@
-"""Live federal opportunity search with transparent deadline filtering."""
+"""Live federal opportunity search with transparent, results-first triage."""
+import csv
+from io import StringIO
 from datetime import date, datetime
 import streamlit as st
 
@@ -83,11 +85,148 @@ def _sort_excluded_last(grants):
     return sorted(grants, key=lambda grant: grant.get("_excluded", False))
 
 
+def _first_value(record, *keys):
+    for key in keys:
+        value = record.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def grant_status(grant):
+    value = _first_value(grant, "oppStatus", "opportunityStatus", "status")
+    normalized = str(value or "").strip().lower()
+    if "forecast" in normalized:
+        return "Forecasted"
+    if "post" in normalized:
+        return "Posted"
+    return "Unknown"
+
+
+def federal_agency(grant):
+    return str(_first_value(
+        grant, "agency", "agencyName", "federalAgency", "agencyCode"
+    ) or "Unknown federal agency").strip()
+
+
+def official_award_ceiling(grant, details):
+    if details:
+        return parse_amount(details.get("award_ceiling"))
+    return parse_amount(_first_value(grant, "awardCeiling", "award_ceiling"))
+
+
+def official_total_funding(grant, details):
+    if details:
+        return parse_amount(details.get("total_funding"))
+    return parse_amount(_first_value(grant, "estimatedFunding", "totalFunding", "total_funding"))
+
+
+def parse_amount(value):
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).replace(",", "").replace("$", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def sort_results(grants, sort_by):
+    def close_key(grant):
+        return parse_close_date(grant.get("closeDate")) or date.max
+
+    def award_key(grant):
+        return parse_amount(grant.get("_award_ceiling"))
+
+    def newest_key(grant):
+        raw = _first_value(grant, "openDate", "postedDate", "createdDate")
+        return parse_close_date(raw) or date.min
+
+    if sort_by == "Award ceiling: high to low":
+        key, reverse = lambda g: award_key(g) is not None, True
+        ordered = sorted(grants, key=lambda g: (award_key(g) is not None, award_key(g) or 0), reverse=reverse)
+    elif sort_by == "Award ceiling: low to high":
+        ordered = sorted(grants, key=lambda g: (award_key(g) is None, award_key(g) or 0))
+    elif sort_by == "Closing date: soonest":
+        ordered = sorted(grants, key=close_key)
+    elif sort_by == "Newest":
+        ordered = sorted(grants, key=newest_key, reverse=True)
+    else:
+        ordered = sorted(
+            grants,
+            key=lambda g: (
+                g.get("_excluded", False),
+                g.get("match_score") is None,
+                -(g.get("match_score") or 0),
+                close_key(g),
+            ),
+        )
+    return sorted(ordered, key=lambda grant: grant.get("_excluded", False))
+
+
+def apply_search_filters(grants, agency_filter="All federal agencies",
+                         statuses=None, eligibility_filter="Any eligibility",
+                         goal_filter="Any verified goal", min_ceiling=None,
+                         max_ceiling=None):
+    statuses = set(statuses or [])
+    filtered = []
+    for grant in grants:
+        if agency_filter != "All federal agencies" and federal_agency(grant) != agency_filter:
+            continue
+        if statuses and grant_status(grant) not in statuses:
+            continue
+        if eligibility_filter != "Any eligibility" and grant["_eligibility_status"] != eligibility_filter:
+            continue
+        if goal_filter != "Any verified goal" and not any(
+            reason["goal"] == goal_filter for reason in grant.get("match_reasons", [])
+        ):
+            continue
+        ceiling = parse_amount(grant.get("_award_ceiling"))
+        if grant["_eligibility_status"] != "Ineligible":
+            if min_ceiling is not None and (ceiling is None or ceiling < min_ceiling):
+                continue
+            if max_ceiling is not None and (ceiling is None or ceiling > max_ceiling):
+                continue
+        filtered.append(grant)
+    return filtered
+
+
+def decision_csv(grants, decisions):
+    output = StringIO()
+    fields = [
+        "opportunity_id", "title", "federal_agency", "status", "closing_date",
+        "award_ceiling", "total_program_funding", "strategic_relevance",
+        "eligibility", "decision", "notes",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    for grant in grants:
+        decision = decisions.get(str(grant.get("id")), {})
+        writer.writerow({
+            "opportunity_id": grant.get("id") or "",
+            "title": grant.get("title") or "Untitled Grant",
+            "federal_agency": federal_agency(grant),
+            "status": grant_status(grant),
+            "closing_date": grant.get("closeDate") or "Missing",
+            "award_ceiling": grant.get("_award_ceiling") or "Missing",
+            "total_program_funding": grant.get("_total_funding") or "Missing",
+            "strategic_relevance": relevance_summary(grant),
+            "eligibility": grant.get("_eligibility_status", "Needs Review"),
+            "decision": decision.get("decision", ""),
+            "notes": decision.get("notes", ""),
+        })
+    return output.getvalue()
+
+
+def _format_amount(value):
+    return f"${value:,.0f}" if value is not None else "Not reported"
+
+
 def show_search():
     st.header("Search Federal Grants")
     st.write("Discover live federal funding opportunities for NC agencies.")
     st.caption("Search is independent of saved Profile preferences. Choose filters for this search.")
     agency = st.selectbox("Agency to evaluate", AGENCIES, key="search_agency")
+    st.caption("All 33 North Carolina agency directory options are preserved. Strategic goals are shown only where verified.")
     query = st.text_input(
         "Search opportunities",
         key="search_query",
@@ -106,14 +245,44 @@ def show_search():
             help="Unknown dates cannot be confirmed to fall within the window.",
         )
 
+    filter_col1, filter_col2 = st.columns(2)
+    with filter_col1:
+        status_filter = st.multiselect(
+            "Opportunity status",
+            ["Posted", "Forecasted"],
+            default=["Posted", "Forecasted"],
+            help="Status comes from the official Grants.gov search record.",
+        )
+        eligibility_filter = st.selectbox(
+            "Eligibility",
+            ["Any eligibility", "Needs Review", "Ineligible"],
+            help="Needs Review includes opportunities without confirmed eligibility.",
+        )
+        sort_by = st.selectbox(
+            "Sort results by",
+            [
+                "Recommended match",
+                "Award ceiling: high to low",
+                "Award ceiling: low to high",
+                "Closing date: soonest",
+                "Newest",
+            ],
+        )
+    with filter_col2:
+        min_ceiling = st.number_input(
+            "Minimum award ceiling ($)",
+            min_value=0, step=50000, value=0,
+            help="Filters the official award ceiling, not total program funding.",
+        )
+        max_ceiling = st.number_input(
+            "Maximum award ceiling ($; 0 = no maximum)",
+            min_value=0, step=50000, value=0,
+            help="Filters the official award ceiling, not total program funding.",
+        )
+
     show_zero_matches = st.checkbox(
         "Show zero-evidence matches (audit view)", value=False,
         help="Hide results with no matched strategic goal terms. This does not prove they are unrelated.",
-    )
-    min_award = st.number_input(
-        "Minimum verified award ceiling ($; 0 = no filter)",
-        min_value=0, step=50000, value=0,
-        help="Applies only to opportunities whose official details you have loaded. Unknown amounts are not assumed to qualify.",
     )
     min_match_score = st.slider(
         "Minimum strategic match score", min_value=0, max_value=100,
@@ -144,9 +313,18 @@ def show_search():
     if query.strip() != cached["query"]:
         st.caption(f'Showing the previous search for "{cached["query"]}". Click Search Grants to refresh.')
     grants = cached["grants"]
+    agency_options = ["All federal agencies"] + sorted({
+        federal_agency(grant) for grant in grants
+    })
+    agency_filter = st.selectbox("Federal agency", agency_options)
     matching, unknown_count = filter_by_deadline(
         grants, int(deadline_days), include_unknown,
     )
+    matching = [
+        grant for grant in matching
+        if (not status_filter or grant_status(grant) in status_filter)
+        and (agency_filter == "All federal agencies" or federal_agency(grant) == agency_filter)
+    ]
     st.write(
         f'{len(matching)} opportunities shown from {len(grants)} retrieved '
         f'Grants.gov records for "{cached["query"]}".'
@@ -186,25 +364,34 @@ def show_search():
             st.rerun()
     screened_count = sum(str(g.get("id")) in detail_cache for g in matching)
     st.caption(f"Official detail coverage: {screened_count}/{len(matching)} candidates. Unscreened results are not confirmed eligible.")
-    if min_award > 0:
-        matching = [
-            g for g in matching
-            if str(g.get("id")) in detail_cache
-            and (
-                screen_eligibility(detail_cache[str(g.get("id"))], agency)["status"] == "Ineligible"
-                or (
-                    detail_cache[str(g.get("id"))].get("award_ceiling") is not None
-                    and detail_cache[str(g.get("id"))]["award_ceiling"] >= min_award
-                )
-            )
-        ]
-        st.caption("Award filter applies only to opportunities with loaded, verified detail records; other results are excluded, not treated as ineligible.")
     ranked = rank_grants(matching, agency, detail_cache=detail_cache)
     for grant in ranked:
         summary = eligibility_summary(
             detail_cache.get(str(grant.get("id"))), agency
         )
         grant["_excluded"] = summary["excluded"]
+        grant["_eligibility_status"] = "Ineligible" if summary["excluded"] else "Needs Review"
+        grant["_award_ceiling"] = official_award_ceiling(
+            grant, detail_cache.get(str(grant.get("id")))
+        )
+        grant["_total_funding"] = official_total_funding(
+            grant, detail_cache.get(str(grant.get("id")))
+        )
+    goal_options = ["Any verified goal"] + sorted({
+        reason["goal"] for grant in ranked for reason in grant.get("match_reasons", [])
+    })
+    goal_filter = st.selectbox(
+        "Verified strategic goal",
+        goal_options,
+        help="Only verified strategic-plan goals appear here; unverified agencies remain unscored.",
+    )
+    ranked = apply_search_filters(
+        ranked,
+        eligibility_filter=eligibility_filter,
+        goal_filter=goal_filter,
+        min_ceiling=float(min_ceiling) if min_ceiling else None,
+        max_ceiling=float(max_ceiling) if max_ceiling else None,
+    )
     excluded_count = sum(grant["_excluded"] for grant in ranked)
     if excluded_count:
         st.info(f"{excluded_count} explicitly excluded opportunity(ies) remain visible below the other results.")
@@ -217,29 +404,82 @@ def show_search():
         g for g in ranked
         if g["_excluded"] or g["match_score"] is None or g["match_score"] >= min_match_score
     ]
-    ranked = _sort_excluded_last(ranked)
+    ranked = sort_results(ranked, sort_by)
     if not ranked:
         st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
+    decisions = st.session_state.setdefault("grant_decisions", {})
+    missing_deadline = sum(parse_close_date(grant.get("closeDate")) is None for grant in ranked)
+    missing_ceiling = sum(grant.get("_award_ceiling") is None for grant in ranked)
+    unknown_status = sum(grant_status(grant) == "Unknown" for grant in ranked)
+    unverified_goals = sum(not grant["plan_verified"] for grant in ranked)
+    st.subheader("Results Overview")
+    st.write(
+        f"{len(ranked)} opportunities shown · "
+        f"{sum(grant.get('_eligibility_status') == 'Ineligible' for grant in ranked)} confirmed exclusions · "
+        f"{sum(str(grant.get('id')) in decisions for grant in ranked)} decisions saved"
+    )
+    with st.expander("Data quality details"):
+        st.caption(
+            f"Missing deadlines: {missing_deadline} · Missing award ceilings: {missing_ceiling} · "
+            f"Unknown statuses: {unknown_status} · Agencies without verified goals: {unverified_goals}"
+        )
+        st.caption("Award ceiling is the maximum award per opportunity. It is not total program funding.")
+        st.caption("Strategic relevance is a deterministic topic-overlap heuristic, not an AI score, eligibility decision, or award probability.")
     if ranked and not ranked[0]["plan_verified"]:
         st.info("No verified strategic goals have been extracted for this agency yet. Results are shown without a match score; eligibility still needs human review.")
     else:
         st.caption("Match scores are a simple, preliminary strategic-topic overlap heuristic, NOT grant eligibility or award probability.")
+    st.download_button(
+        "Export visible results (CSV)",
+        decision_csv(ranked, decisions),
+        file_name="grantscope-results.csv",
+        mime="text/csv",
+        disabled=not ranked,
+    )
     for grant in ranked:
         title = grant.get("title") or "Untitled Grant"
-        federal_agency = grant.get("agency") or "Unknown federal agency"
+        federal_agency_name = federal_agency(grant)
         closing = grant.get("closeDate") or "Not specified"
         opportunity_id = grant.get("id")
         details = detail_cache.get(str(opportunity_id)) if opportunity_id else None
         eligibility = eligibility_summary(details, agency)
+        award_ceiling = grant.get("_award_ceiling")
+        total_funding = official_total_funding(grant, details)
+        decision_key = str(opportunity_id)
+        saved = decisions.get(decision_key, {})
         with st.container(border=True):
             st.subheader(title)
-            st.write(f"**Federal agency:** {federal_agency}")
-            st.write(f"**Closing date (Grants.gov):** {closing}")
+            st.write(f"**Federal agency:** {federal_agency_name}")
+            st.write(f"**Deadline:** {closing} · **Status:** {grant_status(grant)}")
+            st.write(
+                f"**Award ceiling:** {_format_amount(award_ceiling)} · "
+                f"**Total program funding:** {_format_amount(total_funding)}"
+            )
             st.write(f"**Strategic relevance:** {relevance_summary(grant)}")
             status_label = "Ineligible (confirmed exclusion)" if eligibility["excluded"] else eligibility["status"]
             st.write(f"**Eligibility:** {status_label}")
             st.caption(eligibility["explanation"])
             st.write(f"**Recommended next action:** {eligibility['next_action']}")
+            decision_col, notes_col = st.columns([1, 2])
+            with decision_col:
+                decision = st.selectbox(
+                    "Decision",
+                    ["", "Pursue", "Maybe", "Pass"],
+                    index=["", "Pursue", "Maybe", "Pass"].index(saved.get("decision", "")),
+                    key=f"decision_{decision_key}",
+                )
+            with notes_col:
+                notes = st.text_input(
+                    "Coordinator notes (optional)",
+                    value=saved.get("notes", ""),
+                    key=f"notes_{decision_key}",
+                )
+            if st.button("Save decision", key=f"save_decision_{decision_key}"):
+                if not decision:
+                    st.warning("Choose Pursue, Maybe, or Pass before saving.")
+                else:
+                    decisions[decision_key] = {"decision": decision, "notes": notes.strip()}
+                    st.success("Decision saved for this session.")
             if opportunity_id:
                 detail_key = str(opportunity_id)
                 if st.button("Load official award & eligibility details", key=f"detail_{detail_key}"):
@@ -253,8 +493,8 @@ def show_search():
                 if details:
                     with st.expander("View analysis & evidence"):
                         floor, ceiling = details["award_floor"], details["award_ceiling"]
-                        fmt = lambda n: f"${n:,.0f}" if n is not None else "Not reported"
-                        st.write(f'**Award floor:** {fmt(floor)} · **Award ceiling:** {fmt(ceiling)}')
+                        st.write(f'**Award floor:** {_format_amount(floor)} · **Award ceiling:** {_format_amount(ceiling)}')
+                        st.write(f'**Total program funding:** {_format_amount(details.get("total_funding"))}')
                         st.write("**Official applicant types:** " + (", ".join(details["applicant_types"]) or "Not reported"))
                         if details["description"]:
                             st.write("**Official opportunity description:**")

@@ -96,6 +96,14 @@ def _amount(value):
         return None
 
 
+def _first_amount(record, *keys):
+    for key in keys:
+        amount = _amount(record.get(key))
+        if amount is not None:
+            return amount
+    return None
+
+
 def get_grant_details(opportunity_id):
     """Fetch official details on demand, rather than 100 API requests at once."""
     try:
@@ -131,6 +139,10 @@ def get_grant_details(opportunity_id):
     return {
         "award_floor": _amount(synopsis.get("awardFloor")),
         "award_ceiling": _amount(synopsis.get("awardCeiling")),
+        "total_funding": _first_amount(
+            synopsis, "estimatedFunding", "estimatedFundingAmount",
+            "totalFunding", "totalFundingAmount",
+        ),
         "applicant_types": [t for t in types if t],
         "eligibility_description": plain_official_text(synopsis.get("applicantEligibilityDesc")),
         "description": plain_official_text(synopsis.get("synopsisDesc") or synopsis.get("forecastDesc")),
