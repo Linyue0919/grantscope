@@ -180,7 +180,7 @@ def show_search():
         st.caption("Match scores are a simple, preliminary strategic-topic overlap heuristic, NOT grant eligibility or award probability.")
     for grant in ranked:
         title = grant.get("title") or "Untitled Grant"
-        agency = grant.get("agency") or "Unknown federal agency"
+        federal_agency = grant.get("agency") or "Unknown federal agency"
         closing = grant.get("closeDate") or "Not specified"
         opportunity_id = grant.get("id")
         with st.container(border=True):
@@ -195,7 +195,7 @@ def show_search():
                 st.markdown(f'[Agency strategic plan source]({grant["plan_url"]})')
             else:
                 st.caption("Strategic plan goals not yet verified for this agency; no relevance score assigned.")
-            st.write(f"**Federal agency:** {agency}")
+            st.write(f"**Federal agency:** {federal_agency}")
             st.write(f"**Closing date (Grants.gov):** {closing}")
             st.caption("Eligibility requires official detail review. Strategic relevance does not establish application eligibility.")
             if opportunity_id:
