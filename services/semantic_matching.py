@@ -51,10 +51,12 @@ def _source_references(profile, goal_ids):
     ]
 
 
-def evaluation_cache_key(agency, opportunity_id, profile, details, deployment):
+def evaluation_cache_key(agency, opportunity_id, profile, details, deployment,
+                         project_description=""):
     evidence = {
         "agency": agency,
         "opportunity_id": str(opportunity_id),
+        "project_description": str(project_description or ""),
         "goals": _goal_records(profile),
         "plan_url": (profile or {}).get("plan_url"),
         "details": {
@@ -116,7 +118,7 @@ def select_ai_candidates(grants, max_candidates=5):
     return selected
 
 
-def _validate_result(raw, profile, details, agency, exclusion):
+def _validate_result(raw, profile, details, agency, exclusion, project_description=""):
     if not isinstance(raw, dict):
         raise ValueError("response was not an object")
     score = raw.get("semantic_relevance_score")
@@ -133,9 +135,25 @@ def _validate_result(raw, profile, details, agency, exclusion):
     concerns = raw.get("eligibility_concerns")
     if not isinstance(evidence, list) or not isinstance(concerns, list):
         raise ValueError("invalid evidence fields")
+    strategic_score = raw.get("strategic_relevance_score")
+    project_score = raw.get("project_relevance_score")
+    for field, value in (
+        ("strategic_relevance_score", strategic_score),
+        ("project_relevance_score", project_score),
+    ):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100
+        ):
+            raise ValueError(f"invalid {field}")
+    if strategic_score is None and not project_description:
+        strategic_score = score
+    if project_score is None and project_description:
+        project_score = score
     result = {
         "status": EVALUATED,
         "semantic_relevance_score": score,
+        "strategic_relevance_score": strategic_score,
+        "project_relevance_score": project_score,
         "confidence": confidence,
         "matched_goal_ids": matched,
         "verified_source_references": _source_references(profile, matched),
@@ -166,10 +184,13 @@ def evaluate_semantic_match(
     exclusion=None,
     cache=None,
     request_post: Callable = requests.post,
+    project_description="",
 ):
     """Evaluate one opportunity, using only verified goals and official details."""
     deployment = str(config.get("AZURE_OPENAI_DEPLOYMENT", ""))
-    cache_key = evaluation_cache_key(agency, grant.get("id"), profile, details, deployment)
+    cache_key = evaluation_cache_key(
+        agency, grant.get("id"), profile, details, deployment, project_description
+    )
     if cache is not None and cache_key in cache:
         return cache[cache_key]
     if not profile or not profile.get("goals"):
@@ -196,11 +217,16 @@ def evaluate_semantic_match(
         "eligibility_description": str(details.get("eligibility_description") or "")[:3500],
         "applicant_types": details.get("applicant_types") or [],
         "close_date": grant.get("closeDate"),
+        "project_description": str(project_description or "")[:4000],
     }
     system = (
-        "Evaluate strategic relevance only using the supplied verified goals and official evidence. "
+        "Evaluate strategic relevance using the supplied verified goals and official evidence. "
+        "If a project description is supplied, also evaluate project fit against the official evidence "
+        "and report that fit in the same semantic_relevance_score; state the project basis in the explanation. "
         "Never invent goals, pages, eligibility, amounts, deadlines, or citations. "
-        "Return JSON with semantic_relevance_score (integer 0-100), confidence (High/Medium/Low), "
+        "Return JSON with semantic_relevance_score (integer 0-100), strategic_relevance_score "
+        "(integer 0-100 or null), project_relevance_score (integer 0-100 or null), "
+        "confidence (High/Medium/Low), "
         "matched_goal_ids (only supplied IDs), evidence_grounded_explanation, "
         "relevant_opportunity_evidence (array), eligibility_concerns (array), "
         "recommended_next_action, evaluation_model, evaluated_at, and usage. "
@@ -238,7 +264,9 @@ def evaluate_semantic_match(
                 if key in usage and isinstance(usage[key], int)
             }
         result["evaluation_model"] = deployment
-        validated = _validate_result(result, profile, details, agency, exclusion)
+        validated = _validate_result(
+            result, profile, details, agency, exclusion, project_description
+        )
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
         raise SemanticEvaluationError(
             "Azure semantic evaluation failed or returned invalid structured data."

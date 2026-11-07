@@ -11,6 +11,17 @@ from modules.search import (
 from services.agency_directory import AGENCIES
 from services.calendar_export import grants_to_ics
 from services.grant_store import LocalGrantStore
+from services.discovery import (
+    AIRecommendationCache,
+    DashboardShortlistCache,
+    cached_semantic_results,
+    classify_recommendation,
+    classify_recommendations,
+    diversified_retrieval_queries,
+    generate_dashboard_shortlist,
+    get_cached_ai_shortlist,
+    prepare_ai_recommendations,
+)
 from tempfile import TemporaryDirectory
 
 
@@ -163,6 +174,187 @@ class SearchPresentationTests(unittest.TestCase):
         self.assertIn("SUMMARY:Water", content)
         self.assertNotIn("SUMMARY:Unknown", content)
         self.assertNotIn("SUMMARY:Invalid", content)
+
+    def test_dashboard_shortlist_uses_verified_goals_and_caches_official_evidence(self):
+        grants = [
+            {"id": 10, "title": "Water grant", "closeDate": "12/31/2026"},
+            {"id": 11, "title": "Other grant", "closeDate": "12/31/2026"},
+        ]
+        def fake_details(identifier):
+            return {
+                "description": "Official water opportunity",
+                "eligibility_description": "State governments may apply.",
+                "applicant_types": ["State governments"],
+                "award_ceiling": 100000,
+                "detail_source_url": f"https://example/{identifier}",
+            }
+        with TemporaryDirectory() as directory:
+            cache = DashboardShortlistCache(f"{directory}/dashboard.json")
+            result = generate_dashboard_shortlist(
+                "Department of Environmental Quality",
+                cache=cache,
+                fetch_grants=lambda query, rows: grants,
+                fetch_details=fake_details,
+                limit=2,
+            )
+            self.assertEqual(len(result["records"]), 2)
+            self.assertEqual(cache.get("Department of Environmental Quality"), result)
+            self.assertEqual(result["records"][0]["official_url"], "https://example/10")
+
+    def test_dashboard_cache_empty_state_is_not_an_automatic_refresh(self):
+        with TemporaryDirectory() as directory:
+            cache = DashboardShortlistCache(f"{directory}/dashboard.json")
+            self.assertIsNone(cache.get("Department of Environmental Quality"))
+
+    def test_dashboard_ai_shortlist_is_explicitly_unavailable_without_cached_ai_results(self):
+        with TemporaryDirectory() as directory:
+            cache = DashboardShortlistCache(f"{directory}/dashboard.json")
+            self.assertEqual(
+                get_cached_ai_shortlist("Department of Environmental Quality", cache)["status"],
+                "pending",
+            )
+            cache.save("Department of Environmental Quality", [], "now")
+            result = get_cached_ai_shortlist("Department of Environmental Quality", cache)
+            self.assertEqual(result["status"], "unavailable")
+            self.assertEqual(result["records"], [])
+
+    def test_ai_recommendations_use_diversified_queries_and_persist(self):
+        profile = {
+            "goals": [
+                {"text": "Water quality", "terms": ["water", "wastewater"]},
+                {"text": "Flood resilience", "terms": ["flood", "resilience"]},
+            ]
+        }
+        queries = diversified_retrieval_queries(profile, "Community health clinic")
+        self.assertGreaterEqual(len(queries), 3)
+        self.assertEqual(len(queries), len(set(queries)))
+        calls = []
+        grants = [{"id": "1", "title": "Opportunity"}]
+
+        def fetch_grants(query, rows):
+            calls.append((query, rows))
+            return grants
+
+        def evaluate(*args, **kwargs):
+            return {
+                "status": "Evaluated",
+                "semantic_relevance_score": 88,
+                "strategic_relevance_score": 80,
+                "project_relevance_score": 88,
+                "evidence_grounded_explanation": "Official evidence supports the project.",
+            }
+
+        with TemporaryDirectory() as directory:
+            cache = AIRecommendationCache(f"{directory}/ai.json")
+            result = prepare_ai_recommendations(
+                "Department of Environmental Quality",
+                project_description="Community health clinic",
+                cache=cache,
+                fetch_grants=fetch_grants,
+                fetch_details=lambda identifier: {"description": "Official opportunity"},
+                evaluate=evaluate,
+                config={"AZURE_OPENAI_DEPLOYMENT": "test"},
+                max_candidates=5,
+            )
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(len(calls), 8)
+            self.assertEqual(cache.get(
+                "Department of Environmental Quality", "Community health clinic"
+            )["ai_status"], "evaluated")
+            loaded = cached_semantic_results(
+                cache, "Department of Environmental Quality", "Community health clinic"
+            )
+            self.assertEqual(loaded["status"], "ready")
+            self.assertEqual(
+                loaded["results"]["Department of Environmental Quality::1"][
+                    "project_relevance_score"
+                ],
+                88,
+            )
+
+    def test_cached_recommendation_read_does_not_invoke_generation(self):
+        with TemporaryDirectory() as directory:
+            cache = AIRecommendationCache(f"{directory}/ai.json")
+            self.assertIsNone(cache.get("Department of Environmental Quality"))
+
+    def test_project_recommendation_cache_isolated_from_agency_only_cache(self):
+        with TemporaryDirectory() as directory:
+            cache = AIRecommendationCache(f"{directory}/ai.json")
+            cache.save("Department of Environmental Quality", "", [], "agency-time")
+            cache.save("Department of Environmental Quality", "clinic", [], "project-time")
+            self.assertEqual(
+                cache.get("Department of Environmental Quality", "")["refreshed_at"],
+                "agency-time",
+            )
+            self.assertEqual(
+                cache.get("Department of Environmental Quality", "clinic")["refreshed_at"],
+                "project-time",
+            )
+
+    def test_ai_threshold_boundaries_and_project_score_selection(self):
+        record = {"opportunity_id": "1", "eligibility_status": "Needs Review"}
+        semantic = {
+            "status": "Evaluated",
+            "strategic_relevance_score": 59,
+            "project_relevance_score": 81,
+        }
+        self.assertEqual(
+            classify_recommendation(record, semantic, minimum_score=60)["classification"],
+            "Below AI threshold",
+        )
+        self.assertEqual(
+            classify_recommendation(
+                record, semantic, minimum_score=80,
+                project_description="new clinic",
+            )["classification"],
+            "Recommended",
+        )
+        self.assertEqual(
+            classify_recommendation(
+                record, semantic, minimum_score=82,
+                project_description="new clinic",
+            )["classification"],
+            "Below AI threshold",
+        )
+
+    def test_confirmed_ineligible_is_excluded_even_with_high_ai_score(self):
+        records = [{
+            "opportunity_id": "1",
+            "eligibility_status": "Ineligible",
+            "eligibility_reason": "Official applicant restriction",
+        }]
+        result = classify_recommendations(
+            records,
+            {"1": {"status": "Evaluated", "strategic_relevance_score": 100}},
+            minimum_score=0,
+        )
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["counts"]["confirmed_ineligible"], 1)
+        included = classify_recommendations(
+            records,
+            {"1": {"status": "Evaluated", "strategic_relevance_score": 100}},
+            minimum_score=0,
+            exclude_confirmed_ineligible=False,
+        )
+        self.assertEqual(len(included["records"]), 1)
+
+    def test_uncertain_and_missing_ai_scores_are_not_below_threshold(self):
+        records = [
+            {"opportunity_id": "1", "eligibility_status": "Needs Review"},
+            {"opportunity_id": "2", "eligibility_status": "Needs Review"},
+        ]
+        result = classify_recommendations(
+            records,
+            {"1": {"status": "Not AI Evaluated"}, "2": {"status": "Evaluated"}},
+            minimum_score=60,
+            include_uncertain=True,
+        )
+        self.assertEqual(len(result["records"]), 2)
+        self.assertEqual(result["counts"]["not_evaluated"], 2)
+        hidden = classify_recommendations(
+            records, {}, minimum_score=60, include_uncertain=False
+        )
+        self.assertEqual(hidden["records"], [])
 
 
 if __name__ == "__main__":

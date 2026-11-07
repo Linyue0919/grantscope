@@ -9,6 +9,22 @@ def _tokens(value):
     return set(re.findall(r"[a-z0-9]+", str(value).lower()))
 
 
+def project_relevance(project_description, grant, details=None):
+    """Return transparent project-term overlap; no score means no description."""
+    project_tokens = _tokens(project_description)
+    if not project_tokens:
+        return None, []
+    details = details or {}
+    official_text = " ".join(
+        str(value or "") for value in (
+            grant.get("title"), grant.get("synopsis"), grant.get("description"),
+            details.get("description"),
+        )
+    )
+    matched = sorted(project_tokens & _tokens(official_text))
+    return round(100 * len(matched) / len(project_tokens)), matched
+
+
 def rank_grants(grants, agency_name, detail_cache=None):
     """Return results in descending relevance; unverified agencies get no score."""
     profile = VERIFIED_GOALS.get(agency_name)

@@ -121,6 +121,27 @@ class SemanticMatchingTests(unittest.TestCase):
         self.assertEqual(first, second)
         request.assert_called_once()
 
+    def test_project_description_is_sent_to_semantic_evaluator_and_cache_keyed(self):
+        request = Mock(return_value=response(
+            '{"semantic_relevance_score": 91, "confidence": "High", '
+            '"matched_goal_ids": ["goal-4"], "evidence_grounded_explanation": "The official notice supports the project.", '
+            '"relevant_opportunity_evidence": ["Official text."], "eligibility_concerns": [], '
+            '"recommended_next_action": "Review.", "evaluation_model": "", "usage": {}}'
+        ))
+        cache = {}
+        result = evaluate_semantic_match(
+            "Agency", PROFILE, GRANT, DETAILS, CONFIG, cache=cache,
+            request_post=request, project_description="Replace unsafe drinking water pipes.",
+        )
+        self.assertEqual(result["semantic_relevance_score"], 91)
+        payload = request.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("Replace unsafe drinking water pipes.", payload)
+        evaluate_semantic_match(
+            "Agency", PROFILE, GRANT, DETAILS, CONFIG, cache=cache,
+            request_post=request, project_description="Build a public safety training center.",
+        )
+        self.assertEqual(request.call_count, 2)
+
     def test_invalid_response_and_api_failure_are_sanitized(self):
         invalid = Mock(return_value=response('{"semantic_relevance_score": 101}'))
         with self.assertRaises(SemanticEvaluationError):

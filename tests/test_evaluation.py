@@ -3,7 +3,7 @@
 Run: python -m unittest discover -s tests -v
 """
 import unittest
-from services.matching import rank_grants
+from services.matching import project_relevance, rank_grants
 from services.eligibility import screen_eligibility
 from services.grants_api import plain_official_text
 
@@ -87,6 +87,39 @@ class EvaluationRegressionTests(unittest.TestCase):
 
     def test_no_details_means_review(self):
         self.assertEqual(screen_eligibility({}, DEQ)["status"], "Needs Review")
+
+    def test_project_relevance_is_separate_and_evidence_based(self):
+        score, terms = project_relevance(
+            "drinking water infrastructure",
+            {"title": "Infrastructure Assistance"},
+            {"description": "Drinking water improvements"},
+        )
+        self.assertGreater(score, 0)
+        self.assertIn("water", terms)
+
+    def test_synthetic_nc_dhhs_health_mismatch_is_not_claimed_as_ai_evidence(self):
+        """Synthetic regression fixture: keyword mismatch must remain AI-unevaluated offline."""
+        synthetic_profile = {
+            "plan_url": "https://example.gov/nc-dhhs-plan",
+            "goals": [{
+                "id": "health-goal-1",
+                "text": "Improve population health outcomes",
+                "page": 3,
+                "terms": ["health"],
+            }],
+        }
+        grant = {
+            "id": "synthetic-health-1",
+            "title": "Community resilience infrastructure",
+        }
+        score, terms = project_relevance(
+            "health outcomes",
+            grant,
+            {"description": "Environmental resilience infrastructure for communities."},
+        )
+        self.assertEqual(score, 0)
+        self.assertEqual(terms, [])
+        self.assertEqual(synthetic_profile["goals"][0]["text"], "Improve population health outcomes")
 
 
 if __name__ == "__main__":
