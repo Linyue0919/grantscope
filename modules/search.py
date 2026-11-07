@@ -319,24 +319,29 @@ def show_search():
 
     show_zero_matches = st.checkbox(
         "Show zero-evidence matches (audit view)", value=False,
+        key="search_show_zero_matches",
         help="Hide results with no matched strategic goal terms. This does not prove they are unrelated.",
     )
     min_match_score = st.slider(
         "Baseline keyword score (audit only)", min_value=0, max_value=100,
         value=0, step=1,
+        key="search_baseline_keyword_score",
         help="Displayed for comparison only. AI recommendations use the Minimum AI Match Score below.",
     )
     minimum_ai_score = st.slider(
         "Minimum AI Match Score", min_value=0, max_value=100,
         value=60, step=1,
+        key="search_minimum_ai_score",
         help="Applies only to successfully AI-evaluated opportunities; changing it makes no Azure calls.",
     )
     exclude_confirmed_ineligible = st.checkbox(
         "Exclude confirmed ineligible grants", value=True,
+        key="search_exclude_confirmed_ineligible",
         help="Uses only official applicant eligibility evidence. AI guesses never confirm ineligibility.",
     )
     include_uncertain = st.checkbox(
         "Include uncertain eligibility", value=True,
+        key="search_include_uncertain_eligibility",
         help="Keeps Needs Review and Not AI Evaluated opportunities visible with clear labels.",
     )
 
