@@ -165,13 +165,13 @@ def show_search():
         matching = [g for g in matching if str(g.get("id")) not in ineligible_ids]
         if ineligible_ids:
             st.info(f"{len(ineligible_ids)} confirmed ineligible grant(s) hidden. Turn on 'Show ineligible grants (audit view)' to inspect them.")
-    ranked = rank_grants(matching, prefs["agency"], detail_cache=detail_cache)
+    ranked = rank_grants(matching, agency, detail_cache=detail_cache)
     zero_evidence = sum(g["match_score"] == 0 for g in ranked)
     if not show_zero_matches:
         ranked = [g for g in ranked if g["match_score"] != 0]
-    ranked = [g for g in ranked if g["match_score"] is None or g["match_score"] >= min_match_score]
         if zero_evidence:
             st.info(f"{zero_evidence} zero-evidence result(s) hidden. Turn on 'Show zero-evidence matches (audit view)' to inspect them. These are not proven irrelevant.")
+    ranked = [g for g in ranked if g["match_score"] is None or g["match_score"] >= min_match_score]
     if not ranked:
         st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
     if ranked and not ranked[0]["plan_verified"]:
