@@ -7,9 +7,10 @@ def _tokens(value):
     return set(re.findall(r"[a-z0-9]+", str(value).lower()))
 
 
-def rank_grants(grants, agency_name):
+def rank_grants(grants, agency_name, detail_cache=None):
     """Return results in descending relevance; unverified agencies get no score."""
     profile = VERIFIED_GOALS.get(agency_name)
+    detail_cache = detail_cache or {}
     results = []
     for grant in grants:
         row = dict(grant)
@@ -18,9 +19,13 @@ def rank_grants(grants, agency_name):
         row["match_reasons"] = []
         row["plan_url"] = profile["plan_url"] if profile else None
         row["plan_verified"] = bool(profile)
+        row["match_evidence_available"] = bool(profile)
         if profile:
             title = str(row.get("title") or "")
-            description = str(row.get("synopsis") or row.get("description") or "")
+            details = detail_cache.get(str(row.get("id")), {})
+            description = " ".join(str(part or "") for part in (
+                row.get("synopsis"), row.get("description"), details.get("description")
+            ))
             text = f"{title} {description}".lower()
             tokens = _tokens(text)
             matched = []
