@@ -11,6 +11,12 @@ from services.eligibility import screen_eligibility
 from services.verified_goals import VERIFIED_GOALS
 from services.ai_review import review_grant, AIReviewError
 from services.grant_store import LocalGrantStore
+from services.semantic_matching import (
+    SemanticEvaluationError,
+    evaluate_semantic_match,
+    not_evaluated,
+    select_ai_candidates,
+)
 
 
 def parse_close_date(value):
@@ -131,7 +137,9 @@ def parse_amount(value):
         return None
 
 
-def sort_results(grants, sort_by):
+def sort_results(grants, sort_by, semantic_results=None):
+    semantic_results = semantic_results or {}
+
     def close_key(grant):
         return parse_close_date(grant.get("closeDate")) or date.max
 
@@ -156,6 +164,14 @@ def sort_results(grants, sort_by):
             grants,
             key=lambda g: (
                 g.get("_excluded", False),
+                semantic_results.get(
+                    f"{g.get('_agency_namespace', '')}::{g.get('id')}", {}
+                ).get("status") != "Evaluated",
+                -(
+                    semantic_results.get(
+                        f"{g.get('_agency_namespace', '')}::{g.get('id')}", {}
+                    ).get("semantic_relevance_score") or 0
+                ),
                 g.get("match_score") is None,
                 -(g.get("match_score") or 0),
                 close_key(g),
@@ -402,6 +418,7 @@ def show_search():
         min_ceiling=float(min_ceiling) if min_ceiling else None,
         max_ceiling=float(max_ceiling) if max_ceiling else None,
     )
+    ai_candidate_pool = list(ranked)
     excluded_count = sum(grant["_excluded"] for grant in ranked)
     if excluded_count:
         st.info(f"{excluded_count} explicitly excluded opportunity(ies) remain visible below the other results.")
@@ -414,7 +431,50 @@ def show_search():
         g for g in ranked
         if g["_excluded"] or g["match_score"] is None or g["match_score"] >= min_match_score
     ]
-    ranked = sort_results(ranked, sort_by)
+    semantic_results = st.session_state.setdefault("semantic_evaluations", {})
+    for grant in ai_candidate_pool:
+        grant["_agency_namespace"] = agency
+    if st.button("AI Evaluate Top Candidates (up to 5)", key="evaluate_top_candidates"):
+        selected = select_ai_candidates(ai_candidate_pool, max_candidates=5)
+        if not selected:
+            st.warning("No candidates with official opportunity IDs are available for AI evaluation.")
+        else:
+            failures = []
+            with st.spinner("Evaluating up to 5 candidates with Azure OpenAI..."):
+                for candidate in selected:
+                    candidate_id = str(candidate.get("id"))
+                    candidate_key = f"{agency}::{candidate_id}"
+                    details = detail_cache.get(candidate_id)
+                    if details is None:
+                        try:
+                            details = get_grant_details(candidate["id"])
+                            detail_cache[candidate_id] = details
+                        except GrantsAPIError as exc:
+                            semantic_results[candidate_key] = not_evaluated(
+                                f"Official details could not be loaded: {exc}"
+                            )
+                            failures.append(candidate_id)
+                            continue
+                    exclusion = eligibility_summary(details, agency)
+                    try:
+                        semantic_results[candidate_key] = evaluate_semantic_match(
+                            agency,
+                            VERIFIED_GOALS.get(agency),
+                            candidate,
+                            details,
+                            st.secrets,
+                            exclusion=exclusion if exclusion["excluded"] else None,
+                            cache=st.session_state.setdefault("semantic_cache", {}),
+                        )
+                    except SemanticEvaluationError as exc:
+                        semantic_results[candidate_key] = not_evaluated(str(exc))
+                        failures.append(candidate_id)
+            if failures:
+                st.warning(
+                    f"{len(failures)} candidate(s) were not AI evaluated. "
+                    "Review official details and Azure configuration."
+                )
+    ranked = sort_results(ranked, sort_by, semantic_results)
     if not ranked:
         st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
     decisions = st.session_state.setdefault("grant_decisions", {})
@@ -466,6 +526,7 @@ def show_search():
         saved = decisions.get(workspace_key, {})
         saved_record = saved_records.get(workspace_key)
         bookmarked = saved_record is not None
+        semantic = semantic_results.get(workspace_key)
         with st.container(border=True):
             st.subheader(title)
             st.write(f"**Federal agency:** {federal_agency_name}")
@@ -474,7 +535,18 @@ def show_search():
                 f"**Award ceiling:** {_format_amount(award_ceiling)} · "
                 f"**Total program funding:** {_format_amount(total_funding)}"
             )
-            st.write(f"**Strategic relevance:** {relevance_summary(grant)}")
+            st.write(f"**Baseline Keyword Score:** {relevance_summary(grant)}")
+            if semantic and semantic.get("status") == "Evaluated":
+                st.write(
+                    f"**AI Semantic Relevance:** {semantic['semantic_relevance_score']}/100 "
+                    f"({semantic['confidence']} confidence)"
+                )
+            else:
+                st.write(
+                    "**AI Semantic Relevance:** Not AI Evaluated"
+                    + (f" — {semantic['evidence_grounded_explanation']}" if semantic else "")
+                )
+            st.caption("Baseline Keyword Score is separate from AI Semantic Relevance.")
             status_label = "Ineligible (confirmed exclusion)" if eligibility["excluded"] else eligibility["status"]
             st.write(f"**Eligibility:** {status_label}")
             st.caption(eligibility["explanation"])
@@ -562,6 +634,31 @@ def show_search():
                             st.markdown(f'[Agency strategic plan source]({grant["plan_url"]})')
                         else:
                             st.caption("Strategic plan goals are not verified; no relevance score is assigned.")
+                        if semantic:
+                            st.write("**Semantic evaluation evidence:**")
+                            if semantic["status"] == "Evaluated":
+                                st.write(semantic["evidence_grounded_explanation"])
+                                if semantic["relevant_opportunity_evidence"]:
+                                    st.caption("Official opportunity evidence:")
+                                    for item in semantic["relevant_opportunity_evidence"]:
+                                        st.caption(f"• {item}")
+                                if semantic["verified_source_references"]:
+                                    st.caption("Verified strategic-plan references:")
+                                    for reference in semantic["verified_source_references"]:
+                                        st.caption(
+                                            f"• {reference['goal_id']} · page {reference['page']} · "
+                                            f"{reference['url']}"
+                                        )
+                                for concern in semantic["eligibility_concerns"]:
+                                    st.warning(f"Eligibility concern: {concern}")
+                                st.write(f"**AI recommended next action:** {semantic['recommended_next_action']}")
+                                st.caption(
+                                    f"Model: {semantic['evaluation_model']} · "
+                                    f"Evaluated: {semantic['evaluated_at']} · "
+                                    f"Usage: {semantic.get('usage') or 'not reported'}"
+                                )
+                            else:
+                                st.caption(semantic["evidence_grounded_explanation"])
                         if agency in VERIFIED_GOALS:
                             review_key = f"{agency}:{detail_key}"
                             reviews = st.session_state.setdefault("ai_grant_reviews", {})
