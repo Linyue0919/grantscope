@@ -2,6 +2,7 @@
 import streamlit as st
 from modules.search import show_search
 from modules.profile import show_profile
+from modules.dashboard import show_dashboard
 
 st.set_page_config(
     page_title="GrantScope",
@@ -20,8 +21,7 @@ page = st.sidebar.radio(
 )
 
 if page == "Dashboard":
-    st.header("Dashboard")
-    st.info("Dashboard is under development.")
+    show_dashboard()
 
 elif page == "Search":
     show_search()
