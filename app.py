@@ -1,5 +1,6 @@
 
 import streamlit as st
+from modules.search import show_search
 
 st.set_page_config(
     page_title="GrantScope",
@@ -22,10 +23,7 @@ if page == "Dashboard":
     st.info("Dashboard is under development.")
 
 elif page == "Search":
-    st.header("Search Federal Grants")
-    query = st.text_input("Search grants", placeholder="Enter keywords...")
-    if query:
-        st.write("You searched for:", query)
+    show_search()
 
 elif page == "Profile":
     st.header("Agency Profile")
@@ -34,3 +32,4 @@ elif page == "Profile":
 elif page == "AI Help":
     st.header("AI Assistant")
     st.info("AI assistant is under development.")
+
