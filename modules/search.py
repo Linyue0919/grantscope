@@ -2,7 +2,7 @@
 from datetime import date, datetime
 import streamlit as st
 
-from services.grants_api import get_grants, GrantsAPIError
+from services.grants_api import get_grants, get_grant_details, GrantsAPIError
 from modules.profile import get_preferences
 from services.matching import rank_grants
 
@@ -71,6 +71,11 @@ def show_search():
             help="Unknown dates cannot be confirmed to fall within the window.",
         )
 
+    min_award = st.number_input(
+        "Minimum verified award ceiling ($; 0 = no filter)",
+        min_value=0, step=50000, value=0,
+        help="Applies only to opportunities whose official details you have loaded. Unknown amounts are not assumed to qualify.",
+    )
     st.caption(
         f'Profile preferences: minimum award ${prefs["minimum_award"]:,}; '
         f'minimum match score {prefs["minimum_match_score"]}/100. '
@@ -121,6 +126,15 @@ def show_search():
     if not matching:
         st.warning("No results in this deadline window. Try more days or a broader keyword.")
 
+    detail_cache = st.session_state.setdefault("grant_detail_cache", {})
+    if min_award > 0:
+        matching = [
+            g for g in matching
+            if str(g.get("id")) in detail_cache
+            and detail_cache[str(g.get("id"))].get("award_ceiling") is not None
+            and detail_cache[str(g.get("id"))]["award_ceiling"] >= min_award
+        ]
+        st.caption("Award filter applies only to opportunities with loaded, verified detail records; other results are excluded, not treated as ineligible.")
     ranked = rank_grants(matching, prefs["agency"])
     if ranked and not ranked[0]["plan_verified"]:
         st.info("No verified strategic goals have been extracted for this agency yet. Results are shown without a match score; eligibility still needs human review.")
@@ -147,6 +161,26 @@ def show_search():
             st.write(f"**Closing date (Grants.gov):** {closing}")
             st.caption("Eligibility: Needs Review. Award amount: not verified. Relevance is based on available summary text only; verify full official opportunity details.")
             if opportunity_id:
+                detail_key = str(opportunity_id)
+                if st.button("Load official award & eligibility details", key=f"detail_{detail_key}"):
+                    try:
+                        with st.spinner("Loading official Grants.gov details..."):
+                            detail_cache[detail_key] = get_grant_details(opportunity_id)
+                    except GrantsAPIError as exc:
+                        st.error(str(exc))
+                details = detail_cache.get(detail_key)
+                if details:
+                    floor, ceiling = details["award_floor"], details["award_ceiling"]
+                    fmt = lambda n: f"${n:,.0f}" if n is not None else "Not reported"
+                    st.write(f'**Award floor:** {fmt(floor)} · **Award ceiling:** {fmt(ceiling)}')
+                    st.write("**Eligibility: Needs Review** — applicant categories alone do not prove eligibility.")
+                    st.write("**Official applicant types:** " + (", ".join(details["applicant_types"]) or "Not reported"))
+                    if details["eligibility_description"]:
+                        with st.expander("Official eligibility notes"):
+                            st.write(details["eligibility_description"])
+                    if details["description"]:
+                        with st.expander("Official opportunity description"):
+                            st.write(details["description"])
                 st.link_button(
                     "View Official Opportunity",
                     f"https://www.grants.gov/search-results-detail/{opportunity_id}",
