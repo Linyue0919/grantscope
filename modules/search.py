@@ -76,6 +76,10 @@ def show_search():
         "Show ineligible grants (audit view)", value=False,
         help="By default, hide grants confirmed ineligible for direct application. Unchecked grants remain visible as Needs Review.",
     )
+    show_zero_matches = st.checkbox(
+        "Show zero-evidence matches (audit view)", value=False,
+        help="Hide results with no matched strategic goal terms. This does not prove they are unrelated.",
+    )
     min_award = st.number_input(
         "Minimum verified award ceiling ($; 0 = no filter)",
         min_value=0, step=50000, value=0,
@@ -170,7 +174,14 @@ def show_search():
         matching = [g for g in matching if str(g.get("id")) not in ineligible_ids]
         if ineligible_ids:
             st.info(f"{len(ineligible_ids)} confirmed ineligible grant(s) hidden. Turn on 'Show ineligible grants (audit view)' to inspect them.")
-    ranked = rank_grants(matching, prefs["agency"])
+    ranked = rank_grants(matching, prefs["agency"], detail_cache=detail_cache)
+    zero_evidence = sum(g["match_score"] == 0 for g in ranked)
+    if not show_zero_matches:
+        ranked = [g for g in ranked if g["match_score"] != 0]
+        if zero_evidence:
+            st.info(f"{zero_evidence} zero-evidence result(s) hidden. Turn on 'Show zero-evidence matches (audit view)' to inspect them. These are not proven irrelevant.")
+    if not ranked:
+        st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
     if ranked and not ranked[0]["plan_verified"]:
         st.info("No verified strategic goals have been extracted for this agency yet. Results are shown without a match score; eligibility still needs human review.")
     else:
