@@ -57,3 +57,59 @@ def get_grants(keyword="water", rows=100):
         seen.add(key)
         unique.append(hit)
     return unique
+
+
+DETAIL_API_URL = "https://api.grants.gov/v1/api/fetchOpportunity"
+
+
+def _amount(value):
+    """Convert an official amount to a number, or None if unavailable."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        raw = str(value).replace(",", "").replace("$", "").strip()
+        return float(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+def get_grant_details(opportunity_id):
+    """Fetch official details on demand, rather than 100 API requests at once."""
+    try:
+        identifier = int(opportunity_id)
+    except (TypeError, ValueError) as exc:
+        raise GrantsAPIError("Invalid opportunity identifier.") from exc
+    try:
+        response = requests.post(
+            DETAIL_API_URL, json={"opportunityId": identifier}, timeout=30
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise GrantsAPIError(f"Opportunity details request failed: {exc}") from exc
+    except ValueError as exc:
+        raise GrantsAPIError("Opportunity details were not valid JSON.") from exc
+    if not isinstance(payload, dict) or str(payload.get("errorcode")) != "0":
+        raise GrantsAPIError(
+            str(payload.get("msg") if isinstance(payload, dict) else "")
+            or "Grants.gov could not provide opportunity details."
+        )
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise GrantsAPIError("Missing official opportunity detail data.")
+    synopsis = data.get("synopsis") or data.get("forecast") or {}
+    if not isinstance(synopsis, dict):
+        synopsis = {}
+    applicant_types = synopsis.get("applicantTypes") or []
+    types = [
+        str(item.get("description", "")).strip()
+        for item in applicant_types if isinstance(item, dict)
+    ]
+    return {
+        "award_floor": _amount(synopsis.get("awardFloor")),
+        "award_ceiling": _amount(synopsis.get("awardCeiling")),
+        "applicant_types": [t for t in types if t],
+        "eligibility_description": str(synopsis.get("applicantEligibilityDesc") or "").strip(),
+        "description": str(synopsis.get("synopsisDesc") or synopsis.get("forecastDesc") or "").strip(),
+        "detail_source_url": f"https://www.grants.gov/search-results-detail/{identifier}",
+    }
