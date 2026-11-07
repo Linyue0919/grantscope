@@ -43,6 +43,46 @@ def filter_by_deadline(grants, deadline_days, include_unknown=False, today=None)
     ), unknown
 
 
+def eligibility_summary(details, agency_name):
+    """Return a cautious display summary without inferring eligibility."""
+    if not details:
+        return {
+            "status": "Needs Review",
+            "explanation": "Official eligibility details have not been loaded.",
+            "next_action": "Load official details before deciding whether to apply.",
+            "excluded": False,
+        }
+    screening = screen_eligibility(details, agency_name)
+    if screening["status"] == "Ineligible":
+        return {
+            "status": "Ineligible",
+            "explanation": screening["reason"],
+            "next_action": "Do not apply directly; review the official notice for any alternate applicant route.",
+            "excluded": True,
+        }
+    return {
+        "status": "Needs Review",
+        "explanation": screening["reason"],
+        "next_action": "Verify the complete official notice and agency-specific requirements.",
+        "excluded": False,
+    }
+
+
+def relevance_summary(grant):
+    """Return a concise strategic-topic summary distinct from eligibility."""
+    score = grant.get("match_score")
+    if score is None:
+        return "Unscored: this agency has no verified strategic plan goals."
+    if grant.get("match_reasons"):
+        goals = ", ".join(reason["goal"] for reason in grant["match_reasons"][:2])
+        return f"{score}/100 topic overlap: {goals}"
+    return f"{score}/100 topic overlap: no verified goal terms matched."
+
+
+def _sort_excluded_last(grants):
+    return sorted(grants, key=lambda grant: grant.get("_excluded", False))
+
+
 def show_search():
     st.header("Search Federal Grants")
     st.write("Discover live federal funding opportunities for NC agencies.")
@@ -66,10 +106,6 @@ def show_search():
             help="Unknown dates cannot be confirmed to fall within the window.",
         )
 
-    show_ineligible = st.checkbox(
-        "Show ineligible grants (audit view)", value=False,
-        help="By default, hide grants confirmed ineligible for direct application. Unchecked grants remain visible as Needs Review.",
-    )
     show_zero_matches = st.checkbox(
         "Show zero-evidence matches (audit view)", value=False,
         help="Hide results with no matched strategic goal terms. This does not prove they are unrelated.",
@@ -154,26 +190,34 @@ def show_search():
         matching = [
             g for g in matching
             if str(g.get("id")) in detail_cache
-            and detail_cache[str(g.get("id"))].get("award_ceiling") is not None
-            and detail_cache[str(g.get("id"))]["award_ceiling"] >= min_award
+            and (
+                screen_eligibility(detail_cache[str(g.get("id"))], agency)["status"] == "Ineligible"
+                or (
+                    detail_cache[str(g.get("id"))].get("award_ceiling") is not None
+                    and detail_cache[str(g.get("id"))]["award_ceiling"] >= min_award
+                )
+            )
         ]
         st.caption("Award filter applies only to opportunities with loaded, verified detail records; other results are excluded, not treated as ineligible.")
-    ineligible_ids = {
-        str(g.get("id")) for g in matching
-        if str(g.get("id")) in detail_cache
-        and screen_eligibility(detail_cache[str(g.get("id"))], agency)["status"] == "Ineligible"
-    }
-    if not show_ineligible:
-        matching = [g for g in matching if str(g.get("id")) not in ineligible_ids]
-        if ineligible_ids:
-            st.info(f"{len(ineligible_ids)} confirmed ineligible grant(s) hidden. Turn on 'Show ineligible grants (audit view)' to inspect them.")
     ranked = rank_grants(matching, agency, detail_cache=detail_cache)
-    zero_evidence = sum(g["match_score"] == 0 for g in ranked)
+    for grant in ranked:
+        summary = eligibility_summary(
+            detail_cache.get(str(grant.get("id"))), agency
+        )
+        grant["_excluded"] = summary["excluded"]
+    excluded_count = sum(grant["_excluded"] for grant in ranked)
+    if excluded_count:
+        st.info(f"{excluded_count} explicitly excluded opportunity(ies) remain visible below the other results.")
+    zero_evidence = sum(g["match_score"] == 0 and not g["_excluded"] for g in ranked)
     if not show_zero_matches:
-        ranked = [g for g in ranked if g["match_score"] != 0]
+        ranked = [g for g in ranked if g["match_score"] != 0 or g["_excluded"]]
         if zero_evidence:
             st.info(f"{zero_evidence} zero-evidence result(s) hidden. Turn on 'Show zero-evidence matches (audit view)' to inspect them. These are not proven irrelevant.")
-    ranked = [g for g in ranked if g["match_score"] is None or g["match_score"] >= min_match_score]
+    ranked = [
+        g for g in ranked
+        if g["_excluded"] or g["match_score"] is None or g["match_score"] >= min_match_score
+    ]
+    ranked = _sort_excluded_last(ranked)
     if not ranked:
         st.warning("No results with strategic match evidence under the current filters. Try a broader search or enable audit view.")
     if ranked and not ranked[0]["plan_verified"]:
@@ -185,81 +229,78 @@ def show_search():
         federal_agency = grant.get("agency") or "Unknown federal agency"
         closing = grant.get("closeDate") or "Not specified"
         opportunity_id = grant.get("id")
+        details = detail_cache.get(str(opportunity_id)) if opportunity_id else None
+        eligibility = eligibility_summary(details, agency)
         with st.container(border=True):
             st.subheader(title)
-            if grant["match_score"] is not None:
-                st.write(f'**Strategic relevance (prototype): {grant["match_score"]}/100**')
-                if grant["match_reasons"]:
-                    for reason in grant["match_reasons"]:
-                        st.caption(f'Plan goal: {reason["goal"]} (plan page {reason["page"]}); matched terms: {", ".join(reason["keywords"])}')
-                else:
-                    st.caption("No goal keywords matched in the available search summary.")
-                st.markdown(f'[Agency strategic plan source]({grant["plan_url"]})')
-            else:
-                st.caption("Strategic plan goals not yet verified for this agency; no relevance score assigned.")
             st.write(f"**Federal agency:** {federal_agency}")
             st.write(f"**Closing date (Grants.gov):** {closing}")
-            st.caption("Eligibility requires official detail review. Strategic relevance does not establish application eligibility.")
+            st.write(f"**Strategic relevance:** {relevance_summary(grant)}")
+            status_label = "Ineligible (confirmed exclusion)" if eligibility["excluded"] else eligibility["status"]
+            st.write(f"**Eligibility:** {status_label}")
+            st.caption(eligibility["explanation"])
+            st.write(f"**Recommended next action:** {eligibility['next_action']}")
             if opportunity_id:
                 detail_key = str(opportunity_id)
                 if st.button("Load official award & eligibility details", key=f"detail_{detail_key}"):
                     try:
                         with st.spinner("Loading official Grants.gov details..."):
                             detail_cache[detail_key] = get_grant_details(opportunity_id)
-                        if (
-                            not show_ineligible
-                            and screen_eligibility(detail_cache[detail_key], agency)["status"] == "Ineligible"
-                        ):
-                            st.rerun()
+                        details = detail_cache[detail_key]
+                        eligibility = eligibility_summary(details, agency)
                     except GrantsAPIError as exc:
                         st.error(str(exc))
-                details = detail_cache.get(detail_key)
                 if details:
-                    floor, ceiling = details["award_floor"], details["award_ceiling"]
-                    fmt = lambda n: f"${n:,.0f}" if n is not None else "Not reported"
-                    st.write(f'**Award floor:** {fmt(floor)} · **Award ceiling:** {fmt(ceiling)}')
-                    screening = screen_eligibility(details, agency)
-                    if screening["status"] == "Ineligible":
-                        st.error(f'**Eligibility: Ineligible for direct application** — {screening["reason"]}')
-                        st.caption(f'Official evidence: {screening.get("evidence", "See eligibility notes below.")}')
-                    else:
-                        st.warning(f'**Eligibility: Needs Review** — {screening["reason"]}')
-                    st.write("**Official applicant types:** " + (", ".join(details["applicant_types"]) or "Not reported"))
-                    if details["eligibility_description"]:
-                        with st.expander("Official eligibility notes"):
-                            st.write(details["eligibility_description"])
-                    if details["description"]:
-                        with st.expander("Official opportunity description"):
+                    with st.expander("View analysis & evidence"):
+                        floor, ceiling = details["award_floor"], details["award_ceiling"]
+                        fmt = lambda n: f"${n:,.0f}" if n is not None else "Not reported"
+                        st.write(f'**Award floor:** {fmt(floor)} · **Award ceiling:** {fmt(ceiling)}')
+                        st.write("**Official applicant types:** " + (", ".join(details["applicant_types"]) or "Not reported"))
+                        if details["description"]:
+                            st.write("**Official opportunity description:**")
                             st.write(details["description"])
-                # AI is explicitly opt-in and only runs after official details are loaded.
-                # Cache by agency + opportunity, not by opportunity alone.
-                if details and agency in VERIFIED_GOALS:
-                    review_key = f"{agency}:{detail_key}"
-                    reviews = st.session_state.setdefault("ai_grant_reviews", {})
-                    if st.button("Analyze with Azure AI (one paid request)", key=f"ai_{review_key}"):
-                        try:
-                            with st.spinner("Analyzing official evidence with Azure OpenAI..."):
-                                reviews[review_key] = review_grant(
-                                    agency, VERIFIED_GOALS[agency], grant, details, st.secrets
-                                )
-                        except AIReviewError as exc:
-                            st.error(str(exc))
-                    if review_key in reviews:
-                        review = reviews[review_key]
-                        st.write("**AI-assisted review (not an eligibility determination)**")
-                        st.write(review["relevance_summary"])
-                        if review["supported_goal_pages"]:
-                            st.caption("Referenced strategic-plan pages: " + ", ".join(
-                                str(p) for p in review["supported_goal_pages"]
-                            ) + " (check against the source plan)")
-                        for risk in review["eligibility_risks"]:
-                            st.warning("Eligibility risk: " + risk)
-                        for missing in review["missing_information"]:
-                            st.caption("Needs verification: " + missing)
-                        st.write("**Next step:** " + review["recommended_next_step"])
-                        st.caption("AI-generated analysis may contain errors. Confirm all claims against the official sources.")
-                elif details:
-                    st.caption("AI analysis requires verified agency strategic goals.")
+                        if details["eligibility_description"]:
+                            st.write("**Official eligibility evidence:**")
+                            st.write(details["eligibility_description"])
+                        if eligibility["excluded"]:
+                            st.write(f'**Exclusion evidence:** {details.get("eligibility_description") or details.get("description")}')
+                        if grant["match_score"] is not None:
+                            st.write("**Scoring explanation:**")
+                            if grant["match_reasons"]:
+                                for reason in grant["match_reasons"]:
+                                    st.caption(f'Plan goal: {reason["goal"]} (plan page {reason["page"]}); matched terms: {", ".join(reason["keywords"])}')
+                            else:
+                                st.caption("No goal keywords matched in the available search summary.")
+                            st.markdown(f'[Agency strategic plan source]({grant["plan_url"]})')
+                        else:
+                            st.caption("Strategic plan goals are not verified; no relevance score is assigned.")
+                        if agency in VERIFIED_GOALS:
+                            review_key = f"{agency}:{detail_key}"
+                            reviews = st.session_state.setdefault("ai_grant_reviews", {})
+                            if st.button("Analyze with Azure AI (one paid request)", key=f"ai_{review_key}"):
+                                try:
+                                    with st.spinner("Analyzing official evidence with Azure OpenAI..."):
+                                        reviews[review_key] = review_grant(
+                                            agency, VERIFIED_GOALS[agency], grant, details, st.secrets
+                                        )
+                                except AIReviewError as exc:
+                                    st.error(str(exc))
+                            if review_key in reviews:
+                                review = reviews[review_key]
+                                st.write("**Azure AI-assisted review (not an eligibility determination)**")
+                                st.write(review["relevance_summary"])
+                                if review["supported_goal_pages"]:
+                                    st.caption("Referenced strategic-plan pages: " + ", ".join(
+                                        str(p) for p in review["supported_goal_pages"]
+                                    ) + " (check against the source plan)")
+                                for risk in review["eligibility_risks"]:
+                                    st.warning("Eligibility risk: " + risk)
+                                for missing in review["missing_information"]:
+                                    st.caption("Needs verification: " + missing)
+                                st.write("**Next step:** " + review["recommended_next_step"])
+                                st.caption("AI-generated analysis may contain errors. Confirm all claims against the official sources.")
+                elif opportunity_id:
+                    st.caption("Load official details to view analysis and evidence.")
                 st.link_button(
                     "View Official Opportunity",
                     f"https://www.grants.gov/search-results-detail/{opportunity_id}",
