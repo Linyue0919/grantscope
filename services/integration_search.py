@@ -101,6 +101,7 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         ai_limit=ai_limit,ai_eligibility_limit=ai_limit),
         search_fn=search_fn,details_fn=details_fn,today=today,extra_keywords=queries,details_cache=details,
         candidate_ranker=lambda h:project_activity_fit(project,h.get('title',''),h.get('description',''))['rank'],
+        ai_candidate_ranker=lambda r,d:project_activity_fit(project,r['title'],(d or {}).get('description') or '')['rank'],
         prefer_official_deadlines=True,ai_evaluator=fit_ai,
         eligibility_evaluator=eligibility_ai)
     all_records=result['all_records'];potentials=[]
