@@ -46,5 +46,4 @@ jobs:
         with:
           app-name: grantscope-team07
           slot-name: Production
-          startup-command: bash startup.sh
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_FBC12AA9C7104497B4BAC8A3F8DE7A72 }}
