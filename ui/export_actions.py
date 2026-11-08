@@ -5,6 +5,7 @@ import json
 import streamlit as st
 
 from services.agency_profiles import get_agency_profile
+from ui.export_ics import build_ics, google_calendar_url, ics_filename
 from ui.export_pdf import build_grant_pdf, build_summary_pdf, pdf_filename
 from ui.view_model import view_from_dict
 
@@ -40,3 +41,17 @@ def summary_pdf_button(views, agency, key, label="Download summary (PDF)", prima
     data = _summary_pdf_bytes(json.dumps([v.to_dict() for v in views], sort_keys=True, default=str), agency)
     st.download_button(label, data=data, file_name=pdf_filename(agency_short(agency), "saved"),
                        mime="application/pdf", key=key, on_click="ignore", type="primary" if primary else "secondary")
+
+
+def ics_button(views, agency, key):
+    """Download all exportable deadlines as one .ics file; returns how many were skipped."""
+    data, exported, skipped = build_ics(views, calendar_name=f"GrantScope deadlines · {agency_short(agency)}")
+    st.download_button("Export to calendar (.ics)", data=data, file_name=ics_filename(agency_short(agency)),
+                       mime="text/calendar", key=key, on_click="ignore", disabled=exported == 0)
+    return skipped
+
+
+def google_calendar_button(view):
+    url = google_calendar_url(view)
+    if url:
+        st.link_button("Add to Google Calendar ↗", url)

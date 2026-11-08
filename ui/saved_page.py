@@ -7,7 +7,7 @@ import streamlit as st
 from ui import saved_store
 from ui.components.card import card_header_html, chips_html
 from ui.components.detail_panel import render_panel
-from ui.export_actions import grant_pdf_button
+from ui.export_actions import google_calendar_button, grant_pdf_button, ics_button
 from ui.nav import PAGES
 from ui.view_model import RECOMMENDATION_LABELS, agency_display_name, view_from_dict
 
@@ -107,11 +107,19 @@ def show_saved(toolbar=None, card_links=None, panel_actions=None):
                 st.page_link(PAGES["brief"], label="Go to your brief", width="content")
         return
 
+    chosen = [v for v, _, _ in items if st.session_state.get(f"pick_{v.id}", True)]
+    skipped = 0
     with st.container(horizontal=True, gap="small", vertical_alignment="center", key="saved_toolbar"):
-        how = st.segmented_control("Sort by", SORTS, default=SORTS[0], key="saved_sort")
         if toolbar:
-            selected_views = [v for v, _, _ in items if st.session_state.get(f"pick_{v.id}", True)]
-            toolbar(agency, selected_views)
+            toolbar(agency, chosen)
+        skipped = ics_button(chosen, agency, key="saved_ics")
+        how = st.segmented_control("Sort by", SORTS, default=SORTS[0], key="saved_sort", label_visibility="collapsed")
+    notes = [f"Exports include the {len(chosen)} selected item{'s' if len(chosen) != 1 else ''}."]
+    if skipped:
+        notes.append(f"{skipped} selected item{'s have' if skipped != 1 else ' has'} no fixed deadline and "
+                     f"{'weren' if skipped != 1 else 'wasn'}'t added to the calendar file.")
+    st.markdown(f'<p class="gs-small">{" ".join(notes)} Calendar events are all-day on the Grants.gov deadline '
+                'date, with reminders 14 and 3 days before.</p>', unsafe_allow_html=True)
     items = sort_items(items, how or SORTS[0])
 
     selected = st.session_state.get("saved_selected")
@@ -123,7 +131,7 @@ def show_saved(toolbar=None, card_links=None, panel_actions=None):
         main, side = st.container(), None
     with main:
         for view, note, _ in items:
-            _render_saved_card(view, note, agency, view.id == selected, card_links)
+            _render_saved_card(view, note, agency, view.id == selected, card_links or google_calendar_button)
     if side is not None:
         with side:
             render_panel(panel_view, on_close=_close_saved, saved=True, on_toggle_save=_toggle,
