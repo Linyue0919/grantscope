@@ -68,12 +68,19 @@ def project_activity_fit(project,title,description):
         if found:matches.append({'activity':key,'terms':found})
         if find_terms(title,terms):title_hits.append(key)
     if not requested:
-        stop=set('the and for with from north carolina agency department project government residents communities funding seeks would specific require verification intended implementation'.split())
+        stop=set('the and for with from north carolina agency department project government residents communities funding seeks would specific require verification intended implementation through support based expand underserved evidence referrals services program provide'.split())
         terms=list(dict.fromkeys(w for w in re.findall(r'[a-z]{5,}',positive.lower()) if w not in stop))
         found=find_terms(title+' '+description[:2000],terms)
         matches=[{'activity':t,'terms':[t]} for t in found];title_hits=find_terms(title,terms)
     matched={m['activity'] for m in matches}
     appropriate=bool(description) and (len(matches)>=2 or len(requested)==1 and bool(title_hits) and requested and next(iter(requested)) not in {'riparian/wetland restoration','monitoring'})
+    # Substance-use projects must match their specific health domain, not generic
+    # prevention/treatment vocabulary shared by HIV, education or other programs.
+    substance_project=bool(re.search(r'\b(?:opioids?|overdose|naloxone|substance use disorder|addiction)\b',positive,re.I))
+    if substance_project:
+        substance_official=bool(re.search(r'\b(?:opioids?|overdose|naloxone|substance use|addiction|recovery)\b',
+                                          title+' '+description,re.I))
+        if not substance_official:appropriate=False
     if 'mental/behavioral health' in requested and 'mental/behavioral health' not in matched:appropriate=False
     if 'roads/culverts' in requested and 'roads/culverts' not in matched:appropriate=False
     if 'broadband' in requested:
@@ -164,6 +171,17 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
             official_scope))
         if prison_population and prison_target and not explicit_prison:
             reasons.append('Official program targets incarcerated or reentry populations; proposed project does not establish that population')
+        # Named program populations are stronger evidence than broad shared terms.
+        youth_target=bool(re.search(
+            r'\b(?:opioid affected youth|youth impacted by opioids|mentoring for youth|youth affected by opioids)\b',
+            official_scope))
+        youth_project=bool(re.search(r'\b(?:youth|adolescents?|teenagers?|children|juveniles?)\b',
+                                     proposed_scope))
+        if youth_target and not youth_project:
+            reasons.append('Official program targets opioid-affected youth; proposed project does not establish that population')
+        if re.search(r'\bfamily treatment court\b',official_scope) and not re.search(
+            r'\b(?:family treatment court|drug court|treatment court)\b',proposed_scope):
+            reasons.append('Official program requires a treatment-court context not established by the project')
         juvenile_target=bool(re.search(
             r'\b(?:juvenile justice system|juvenile offenders?|youth involved in (?:the )?juvenile justice|justice-involved youth|youth in juvenile detention)\b',
             official_scope))
