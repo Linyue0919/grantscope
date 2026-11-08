@@ -17,7 +17,7 @@ PAGES.update({
     "brief": st.Page(show_dashboard, title="Brief", url_path="brief", default=True),
     "browse": st.Page(show_search, title="Browse all", url_path="browse"),
     "saved": st.Page(show_saved, title=f"Saved ({saved_store.count_all()})", url_path="saved"),
-    "profile": st.Page(show_profile, title="Agency profile", url_path="profile"),
+    "alerts": st.Page(show_profile, title="Alerts", url_path="alerts"),
     "how": st.Page(show_how_it_works, title="How it works", url_path="how-it-works"),
     "ai_help": st.Page(show_ai_help, title="AI Help", url_path="ai-help", visibility="hidden"),
 })

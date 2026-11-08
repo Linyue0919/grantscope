@@ -125,6 +125,39 @@ a { color: var(--gs-navy); }
 .stApp .gs-savedbar { background: #1B2230; color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 14px; margin-top: 18px; }
 .stApp .gs-savedbar b { color: #fff; }
 .stApp .gs-savedbar-note { color: #C9D1DC; }
+/* Alerts page */
+.stApp .gs-h3-first { margin-top: 0; }
+.stApp .gs-count { background: var(--gs-tint); color: var(--gs-text); border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.4; }
+.stApp .gs-count b { color: var(--gs-navy); }
+.stApp .gs-count-zero { background: var(--gs-bg); }
+.stApp .gs-count-zero b { color: var(--gs-text); }
+.stApp .gs-warn { color: var(--gs-amber-text); }
+.stApp .gs-remind { margin: 6px 0 4px 18px; padding: 0; }
+.stApp .gs-remind li { margin: 2px 0; color: var(--gs-text); font-size: 14px; }
+.st-key-inlinelink_alerts_brief p { margin: 0 !important; }
+.stApp table.gs-mail-facts { width: 100%; border-collapse: collapse; border: none; font-size: 14px; margin: 6px 0; }
+.stApp table.gs-mail-facts td { border: none; border-bottom: 1px solid #EEF0F3; padding: 6px 0; vertical-align: top; }
+.stApp table.gs-mail-facts td.l { color: var(--gs-muted); width: 92px; }
+.stApp table.gs-mail-facts td.v { font-weight: 600; color: var(--gs-text); }
+.stApp .gs-preview-label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--gs-muted); font-weight: 600; margin: 14px 0 6px; }
+.stApp .gs-mail { background: var(--gs-card); border: 1px solid var(--gs-border); border-radius: 12px; overflow: hidden; font-size: 14px; }
+.stApp .gs-mail-none { padding: 14px 16px; color: var(--gs-secondary); background: var(--gs-bg); }
+.stApp .gs-mail-off { background: var(--gs-neutral); color: var(--gs-secondary); padding: 6px 16px; font-size: 13px; }
+.stApp .gs-mail-head { border-top: 4px solid var(--gs-navy); padding: 12px 16px 10px; border-bottom: 1px solid var(--gs-border); background: #FBFCFD; }
+.stApp .gs-mail-meta { font-size: 13px; color: var(--gs-secondary); line-height: 1.6; }
+.stApp .gs-mail-meta span { display: inline-block; width: 48px; color: var(--gs-muted); }
+.stApp .gs-mail-subject { font-size: 16px; font-weight: 700; color: var(--gs-text); margin-top: 6px; line-height: 1.35; }
+.stApp .gs-mail-body { padding: 4px 16px 14px; }
+.stApp .gs-mail-group { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--gs-navy); font-weight: 700; margin: 14px 0 4px; }
+.stApp .gs-mail-item { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid #EEF0F3; }
+.stApp .gs-mail-item .t { font-weight: 600; color: var(--gs-text); line-height: 1.3; }
+.stApp .gs-mail-item .t a { color: var(--gs-navy); text-decoration: none; }
+.stApp .gs-mail-item .t a:hover { text-decoration: underline; }
+.stApp .gs-mail-item .d { font-size: 13px; color: var(--gs-muted); margin-top: 1px; }
+.stApp .gs-mini-score { flex: none; min-width: 38px; text-align: center; border-radius: 6px; padding: 3px 6px; font-weight: 700; font-size: 14px; }
+.stApp .gs-mail-empty { color: var(--gs-muted); font-size: 13px; margin: 4px 0; }
+.stApp .gs-mail-text { color: var(--gs-text); margin: 10px 0 6px; line-height: 1.45; }
+.stApp .gs-mail-foot { color: var(--gs-muted); font-size: 12px; margin: 12px 0 0; }
 /* Stacked header */
 .st-key-brief_header { margin-bottom: 12px; }
 .st-key-brief_header p { margin: 0 !important; }
