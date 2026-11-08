@@ -318,3 +318,28 @@ def test_search_ai_shortlist_prefers_project_specific_official_description():
             today=date(2026,11,8),enable_ai=True,ai_limit=1)
     assert Fit.calls==['700002']
     assert result['foundation']['ai']['evaluated']==1
+
+
+def test_real_pdf_false_positive_categories_do_not_become_potential_matches():
+    project=('Expand opioid overdose prevention and substance use disorder treatment '
+             'in underserved rural North Carolina communities through naloxone '
+             'distribution, peer recovery support, and referrals to evidence-based treatment.')
+    hits=[
+        {'id':'364057','title':'OJJDP FY 2026 Opioid Affected Youth Initiative','oppStatus':'posted','closeDate':'11/16/2026'},
+        {'id':'364058','title':'OJJDP FY 2026 Mentoring for Youth Impacted by Opioids and Other Substance Use','oppStatus':'posted','closeDate':'11/16/2026'},
+        {'id':'343653','title':'Department of Defense HIV/AIDS Prevention Program','oppStatus':'posted','closeDate':'09/18/2027'},
+        {'id':'364041','title':'OJJDP FY 2026 Family Treatment Court Program','oppStatus':'posted','closeDate':'11/16/2026'},
+        {'id':'363047','title':'Preschool Development Grant Birth Through Five (PDG B-5) SMART Grant','oppStatus':'posted','closeDate':'11/20/2026'},
+    ]
+    descriptions={
+        '364057':'Support opioid overdose prevention and treatment for opioid affected youth.',
+        '364058':'Mentoring for youth impacted by opioids and other substance use.',
+        '343653':'HIV/AIDS prevention and treatment through community health support.',
+        '364041':'Support family treatment court programs for substance use disorder treatment.',
+        '363047':'Support preschool development programs for children birth through five.',
+    }
+    result=search_potential_matches(
+        'Department of Health and Human Services',project,250000,date(2026,11,8),
+        today=date(2026,11,8),search_fn=lambda *args:hits,
+        details_fn=lambda oid:details(types=(('00','State governments'),),desc=descriptions[oid]))
+    assert not result['potentials'], [(r['id'],r['project_fit']) for r in result['potentials']]
