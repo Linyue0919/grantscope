@@ -251,3 +251,40 @@ def test_streamlit_failed_deep_action_can_be_explicitly_retried_without_autocall
         at.run();assert configured.call_count==1
         at.button(key=key).click().run()
         assert not at.exception and configured.call_count==2 and len(provider.calls)==2
+
+
+def test_rural_community_services_do_not_match_prison_or_juvenile_justice_only_programs():
+    project=('Expand opioid overdose prevention and substance use disorder treatment '
+             'in underserved rural North Carolina communities with naloxone, '
+             'peer recovery and referrals to evidence-based treatment.')
+    hits=[
+        {'id':'364043','title':'Residential Substance Abuse Treatment for State Prisoners',
+         'oppStatus':'posted','closeDate':'11/20/2026'},
+        {'id':'364040','title':'Expanding Youth Access to Community-Based Treatment',
+         'oppStatus':'posted','closeDate':'11/16/2026'},
+    ]
+    descriptions={
+        '364043':'Provide substance use treatment for state prisoners in jails and throughout the reentry process.',
+        '364040':'Provide community-based treatment for youth involved in the juvenile justice system.',
+    }
+    result=search_potential_matches(
+        'Department of Health and Human Services',project,
+        today=date(2026,11,8),search_fn=lambda *args:hits,
+        details_fn=lambda oid:details(types=(('00','State governments'),),desc=descriptions[oid]))
+    assert not result['potentials']
+    records={r['id']:r for r in result['all_records']}
+    assert 'incarcerated or reentry' in ' '.join(records['364043']['project_screening_reasons'])
+    assert 'juvenile-justice' in ' '.join(records['364040']['project_screening_reasons'])
+
+
+def test_prison_population_is_not_excluded_when_explicitly_in_project():
+    project='Provide substance use treatment for state prisoners in jails and reentry.'
+    hit={'id':'364043','title':'Residential Substance Abuse Treatment for State Prisoners',
+         'oppStatus':'posted','closeDate':'11/20/2026'}
+    result=search_potential_matches(
+        'Department of Health and Human Services',project,
+        today=date(2026,11,8),search_fn=lambda *args:[hit],
+        details_fn=lambda oid:details(types=(('00','State governments'),),
+            desc='Provide substance use treatment for state prisoners in jails.'))
+    assert not any('incarcerated or reentry' in reason
+                   for reason in result['all_records'][0]['project_screening_reasons'])
