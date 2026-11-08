@@ -24,13 +24,15 @@ jobs:
       - run: |
           mkdir -p release/data
           cp app.py requirements.txt startup.sh release/
-          cp -R modules services research_foundation release/
+          cp -R modules services research_foundation ui release/
+          mkdir -p release/.streamlit && cp .streamlit/config.toml release/.streamlit/
           find release -type d -name __pycache__ -prune -exec rm -r {} +
           cp data/agency_strategic_plans.json release/data/
       - uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: release/
+          include-hidden-files: true
   deploy:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/release/final-demo'
     needs: build
