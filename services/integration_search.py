@@ -146,6 +146,31 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         elif record['eligibility']['status']==LIKELY_INELIGIBLE:
             reasons.append('Likely direct-applicant restriction (interpretation); alternative route unverified')
         if detail and not fit['supported_for_screening']:reasons.append('Insufficient specific project-activity evidence')
+        # A shared topic is not enough when the notice serves a different population.
+        # This is a conservative evidence-based hold, not an alternative AI score.
+        project_scope=positive_project_text(project).lower()
+        official_scope=(record['title']+' '+detail.get('description','')[:2500]).lower()
+        incarceration_scope=bool(re.search(
+            r'\\b(?:prisoners?|inmates?|incarcerat(?:ed|ion)|detention|jails?|correctional facilities|reentry)\\b',
+            official_scope))
+        explicit_incarceration=bool(re.search(
+            r'\\b(?:prisoners?|inmates?|incarcerat(?:ed|ion)|detention|jails?|correctional|reentry)\\b',
+            project_scope))
+        if incarceration_scope and not explicit_incarceration and re.search(
+            r'\\b(?:for|serving|to|of|in)\\s+(?:state\\s+)?(?:adult\\s+|juvenile\\s+)?(?:prisoners?|inmates?|people in detention|individuals in detention|individuals in incarceration)\\b'
+            r'|\\b(?:in jails|in prisons|in detention or incarceration|throughout the reentry process)\\b',
+            official_scope):
+            reasons.append('Official program targets incarcerated or reentry populations; project does not establish that population')
+        juvenile_scope=bool(re.search(
+            r'\\b(?:juvenile justice system|juvenile justice involvement|youth in the justice system|juvenile delinquency)\\b',
+            official_scope))
+        explicit_juvenile=bool(re.search(
+            r'\\b(?:juvenile justice|juvenile delinquency|justice.involved youth|youth in the justice system)\\b',
+            project_scope))
+        if juvenile_scope and not explicit_juvenile and re.search(
+            r'\\b(?:at risk of or have already been in the juvenile justice system|involved in the juvenile justice system|juvenile justice system)\\b',
+            official_scope):
+            reasons.append('Official program targets juvenile-justice populations; project does not establish that population')
         # Regional restrictions are a project-fit hold, not a fabricated legal exclusion.
         restricted_title=re.search(r'\b(?:for (?:indian )?tribes|for indian tribes|tribal (?:governments|organizations)|intertribal consortia|affiliated partner|fellowship|for universities)\b',record['title'],re.I)
         if restricted_title:reasons.append('Special applicant or affiliation route is not established for the selected agency')
