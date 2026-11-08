@@ -3,15 +3,20 @@
 Framework-free: no Streamlit imports, so any page or test can call it.
 
 Pipeline (see docs/MATCHING.md):
-  1. Retrieve live Grants.gov records for several plan-derived keywords.
-  2. Screen with hard rules: closed / outside the deadline window /
-     confirmed ineligible applicant type / no plan-goal evidence -> excluded.
-     Screening never "adjusts" a score; it removes the grant and records why.
-  3. Score the remaining grants (0-100) from three transparent components:
-     strategic alignment (60), deadline actionability (20), funding fit (20).
+  1. Retrieve live Grants.gov records with targeted, plan-derived keywords.
+  2. Screen with deterministic pass/fail rules: closed, not enough days left
+     to apply, applicant types that exclude the agency, below an optional
+     minimum award. Screening removes a grant and records why; it never
+     changes a score.
+  3. Assess Strategic Fit (0-100): a heuristic for *relevance only*, from plan
+     terms in the grant's official text, optionally blended with a validated
+     Azure OpenAI semantic assessment. Deadline urgency, award size and
+     application effort are reported separately and do not change it.
+  4. Sort into sections: priority (open, evidence of fit), lower-evidence
+     (open, no keyword evidence: low or unassessed, never silently dropped),
+     upcoming (forecasted, not yet accepting applications), screened out.
 
-The Match Score measures fit with an agency's published strategic goals and
-practical actionability. It is NOT a probability of receiving an award.
+Strategic Fit is not eligibility and not a probability of receiving an award.
 """
 import html
 import re
@@ -19,59 +24,45 @@ import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
+from typing import Optional
 
-ENGINE_VERSION = "1.0"
-WEIGHTS = {"strategic_alignment": 60, "deadline": 20, "funding": 20}
-# Points per matched plan term. Terms found in the grant title count fully;
-# terms found only in the (often long) official description count half.
-PHRASE_POINTS = 20  # multi-word plan phrase
-WORD_POINTS = 10    # single-word plan term
-
-# Grants.gov applicant type codes (fetchOpportunity -> applicantTypes[].id).
-APPLICANT_TYPE_IDS = {
-    "State governments": "00",
-    "County governments": "01",
-    "City or township governments": "02",
-    "Special district governments": "04",
-    "Independent school districts": "05",
-    "Public and State controlled institutions of higher education": "06",
-}
-UNRESTRICTED_ID = "99"
-OTHERS_ID = "25"
-RESTRICTION_PATTERN = re.compile(
-    r"\bonly\b[^.]{0,160}?\b(?:eligible|may apply|can apply|are eligible)\b", re.IGNORECASE
+from services.application_effort import assess_effort
+from services.eligibility_assessment import (
+    INELIGIBLE, LABELS as ELIGIBILITY_STATUS_LABELS, LIKELY_ELIGIBLE, LIKELY_INELIGIBLE, NEEDS_REVIEW,
+    NOT_CHECKED, RANK as ELIGIBILITY_RANK, apply_ai, assess_eligibility,
 )
 
-# Regions outside North Carolina that often signal a geographically limited
-# program. Used only as a caution flag, never to exclude a grant.
-OTHER_REGION_HINTS = (
-    "great lakes", "great plains", "colorado river", "pacific", "alaska", "hawaii",
-    "puerto rico", "guam", "chesapeake", "gulf of maine", "rocky mountain", "mississippi river",
-    "california", "texas", "florida", "puget sound", "columbia river", "new england",
-)
+ENGINE_VERSION = "2.0"
+
+# Keyword heuristic points per matched plan term (capped at 100).
+FIT_POINTS = {"title_phrase": 40, "title_word": 20, "description_phrase": 20, "description_word": 10}
+# Long descriptions mention many topics, so description-only evidence is capped:
+# a strong keyword fit requires plan terms in the grant title.
+DESCRIPTION_CAP = 40
+# Experimental, unvalidated weight of the AI assessment when both are available.
+AI_WEIGHT = 0.5
+FIT_LEVELS = ((60, "strong", "Strong fit"), (30, "moderate", "Moderate fit"), (1, "low", "Low fit"))
 
 OPEN, FORECASTED, CLOSED, UNKNOWN = "open", "forecasted", "closed", "unknown"
-ELIGIBLE_TYPE, NEEDS_REVIEW, NOT_ELIGIBLE, NOT_CHECKED = (
-    "eligible_applicant_type", "needs_review", "not_eligible", "not_checked",
-)
-ELIGIBILITY_LABELS = {
-    ELIGIBLE_TYPE: "Eligible applicant type listed",
-    NEEDS_REVIEW: "Needs review",
-    NOT_ELIGIBLE: "Not an eligible applicant type",
-    NOT_CHECKED: "Eligibility not checked",
-}
-_ELIGIBILITY_RANK = {ELIGIBLE_TYPE: 0, NEEDS_REVIEW: 1, NOT_CHECKED: 2, NOT_ELIGIBLE: 3}
+ELIGIBLE_TYPE = LIKELY_ELIGIBLE      # backwards-compatible alias
+NOT_ELIGIBLE = INELIGIBLE            # backwards-compatible alias
+ELIGIBILITY_LABELS = ELIGIBILITY_STATUS_LABELS
+_ELIGIBILITY_RANK = ELIGIBILITY_RANK
+PRIORITY, LOW_EVIDENCE, UPCOMING, SCREENED_OUT = "priority", "low_evidence", "upcoming", "screened_out"
+LIKELY_INELIGIBLE_SECTION = "likely_ineligible"  # visible, flagged, never a priority recommendation
+UPCOMING_LOW = "upcoming_low_evidence"  # forecasted, no plan evidence: counted, not listed
 
 
 @dataclass
 class MatchSettings:
-    horizon_days: int = 90            # only grants closing within this many days
-    min_award: int = 0                # preferred minimum award ceiling ($)
-    include_forecasted: bool = True
+    min_days_left: Optional[int] = 30      # None = any open grant
+    min_award: Optional[int] = None        # optional advanced filter on reported award ceilings
     include_unknown_deadline: bool = False
     max_queries: int = 8
-    rows_per_query: int = 100         # Grants.gov search2 maximum per request
-    detail_limit: int = 40            # official detail lookups per run
+    rows_per_query: int = 100              # Grants.gov search2 maximum per request
+    detail_limit: int = 60                 # official detail lookups per run
+    ai_limit: int = 12                     # AI fit assessments per run (when configured)
+    ai_eligibility_limit: int = 15         # AI eligibility interpretations per run (when configured)
     max_workers: int = 6
 
 
@@ -115,7 +106,7 @@ def parse_date(value):
     return None
 
 
-def classify_deadline(hit, details, today, horizon_days):
+def classify_deadline(hit, details, today):
     """Deterministic open-status classification."""
     status_raw = str(hit.get("oppStatus") or "").strip().lower()
     close = parse_date(hit.get("closeDate"))
@@ -130,86 +121,56 @@ def classify_deadline(hit, details, today, horizon_days):
     elif status_raw == "forecasted":
         status, rule = FORECASTED, "Forecasted: not yet accepting applications; dates are estimates"
     elif status_raw == "posted" and close is not None:
-        status, rule = OPEN, "Posted and closing date is today or later"
+        status, rule = OPEN, "Posted and accepting applications"
     elif status_raw == "posted":
         status, rule = UNKNOWN, "Posted, but no closing date is listed"
     else:
         status, rule = UNKNOWN, "Grants.gov status not recognized"
+    return {"status": status, "rule": rule, "close_date": close.isoformat() if close else None,
+            "days_left": days_left}
 
-    within = None if days_left is None else 0 <= days_left <= horizon_days
-    return {
-        "status": status,
-        "rule": rule,
-        "close_date": close.isoformat() if close else None,
-        "days_left": days_left,
-        "within_horizon": within,
-    }
+
+def urgency(deadline):
+    """Time pressure, reported separately from relevance."""
+    days, status = deadline["days_left"], deadline["status"]
+    if status == FORECASTED:
+        return {"level": "upcoming", "label": "Not yet open"}
+    if days is None:
+        return {"level": "unknown", "label": "No closing date listed"}
+    if days <= 14:
+        return {"level": "urgent", "label": f"{days} days left — urgent"}
+    if days <= 30:
+        return {"level": "soon", "label": f"{days} days left"}
+    return {"level": "comfortable", "label": f"{days} days left"}
 
 
 # --------------------------------------------------------------------------- eligibility
 
-def screen_eligibility(details, profile):
-    """Screen applicant eligibility from official details.
+def screen_eligibility(details, profile, title="", source_url=None, ai=None):
+    """Eligibility from structured applicant types AND official notes (see eligibility_assessment).
 
-    Never returns a definitive "eligible": the best outcome is that the agency's
-    applicant category is listed, which still requires confirming the notice.
+    A validated AI interpretation may resolve unclear cases but never overrides a
+    confirmed restriction. Never returns guaranteed eligibility.
     """
-    if not details:
-        return {"status": NOT_CHECKED, "label": ELIGIBILITY_LABELS[NOT_CHECKED],
-                "reason": "Official eligibility details have not been loaded for this grant.",
-                "evidence": None, "applicant_types": []}
-
-    types = details.get("applicant_types") or []
-    descriptions = [t.get("description", "") for t in types if t.get("description")]
-    ids = {t.get("id") for t in types}
-    text = details.get("eligibility_text") or ""
-    categories = (profile or {}).get("applicant_categories") or ["State governments"]
-    wanted_ids = {APPLICANT_TYPE_IDS[c] for c in categories if c in APPLICANT_TYPE_IDS}
-    wanted_names = {c.lower() for c in categories}
-
-    def result(status, reason, evidence=None):
-        return {"status": status, "label": ELIGIBILITY_LABELS[status], "reason": reason,
-                "evidence": evidence, "applicant_types": descriptions}
-
-    listed = (ids & wanted_ids) or any(d.lower() in wanted_names for d in descriptions)
-    unrestricted = UNRESTRICTED_ID in ids or any(d.lower().startswith("unrestricted") for d in descriptions)
-    restriction = RESTRICTION_PATTERN.search(text)
-
-    if not types and not text.strip():
-        return result(NEEDS_REVIEW, "Grants.gov lists no applicant types or eligibility notes.")
-    if listed or unrestricted:
-        which = ", ".join(categories) if listed else "Unrestricted"
-        if restriction:
-            return result(NEEDS_REVIEW,
-                          f"{which} is listed, but the eligibility notes contain a restriction.",
-                          restriction.group(0).strip())
-        return result(ELIGIBLE_TYPE,
-                      f"Applicant type '{which}' is listed. Confirm remaining requirements in the notice.")
-    if OTHERS_ID in ids or not types:
-        evidence = restriction.group(0).strip() if restriction else (text[:240] or None)
-        return result(NEEDS_REVIEW, "Applicant type is 'Others' or unspecified; read the eligibility notes.",
-                      evidence)
-    return result(NOT_ELIGIBLE,
-                  f"Listed applicant types do not include {', '.join(categories)}.",
-                  "; ".join(descriptions))
+    return apply_ai(assess_eligibility(details, profile, title, source_url), ai)
 
 
-# --------------------------------------------------------------------------- scoring
+# --------------------------------------------------------------------------- relevance
 
-def _term_points(term, in_title):
-    base = PHRASE_POINTS if " " in term else WORD_POINTS
-    return base if in_title else base // 2
+def _fit_level(score):
+    for threshold, level, label in FIT_LEVELS:
+        if score >= threshold:
+            return level, label
+    return "low", "Low fit"
 
 
-def score_alignment(title, description, profile):
-    """Strategic alignment: plan-goal terms found in the grant's official text."""
-    basis = "title and official description" if description else "title only (details not loaded)"
-    max_points = WEIGHTS["strategic_alignment"]
+def keyword_relevance(title, description, profile):
+    """Deterministic heuristic: plan terms found in the grant's official text."""
+    basis = "title and official description" if description else "title only (description not loaded)"
     if not profile:
-        return {"points": 0, "max": max_points, "matched_goals": [], "matched_terms": [],
-                "basis": basis, "reason": "No verified strategic goals for this agency."}
-
-    counted, matched_goals = {}, []  # term -> found in title?
+        return {"score": None, "matched_goals": [], "matched_terms": [], "basis": basis,
+                "reason": "No verified strategic goals for this agency."}
+    counted, matched_goals = {}, []
     for goal in profile["goals"]:
         in_title = set(find_terms(title, goal["terms"]))
         in_desc = set(find_terms(description, goal["terms"])) if description else set()
@@ -222,172 +183,206 @@ def score_alignment(title, description, profile):
             })
             for term in found:
                 counted[term] = counted.get(term, False) or term in in_title
-    raw = sum(_term_points(term, in_title) for term, in_title in counted.items())
-    points = min(max_points, raw)
+    title_raw = desc_raw = 0
+    for term, in_title in counted.items():
+        kind = "phrase" if " " in term else "word"
+        if in_title:
+            title_raw += FIT_POINTS[f"title_{kind}"]
+        else:
+            desc_raw += FIT_POINTS[f"description_{kind}"]
+    score = min(100, title_raw + min(DESCRIPTION_CAP, desc_raw))
     if matched_goals:
         n_title = sum(1 for v in counted.values() if v)
-        reason = (f"{len(counted)} plan term(s) across {len(matched_goals)} goal(s); {n_title} in the title. "
-                  f"Title: {PHRASE_POINTS} pts per phrase, {WORD_POINTS} per word; description-only: half. "
-                  f"Max {max_points}.")
+        reason = (f"{len(counted)} plan term(s) across {len(matched_goals)} goal(s), {n_title} in the title. "
+                  f"Title phrase {FIT_POINTS['title_phrase']}, title word {FIT_POINTS['title_word']}, "
+                  f"description phrase {FIT_POINTS['description_phrase']}, description word "
+                  f"{FIT_POINTS['description_word']} (description total capped at {DESCRIPTION_CAP}); "
+                  "overall cap 100.")
+    elif description:
+        reason = "No plan terms in the title or official description (may still be relevant in other words)."
     else:
-        reason = "No plan-goal terms found in the grant text."
-    return {"points": points, "max": max_points, "matched_goals": matched_goals,
-            "matched_terms": sorted(counted), "basis": basis, "reason": reason}
+        reason = "No plan terms in the title; the official description was not loaded."
+    return {"score": score, "matched_goals": matched_goals, "matched_terms": sorted(counted),
+            "basis": basis, "reason": reason}
 
 
-def score_deadline(deadline):
-    max_points = WEIGHTS["deadline"]
-    days, status = deadline["days_left"], deadline["status"]
-    if status == FORECASTED:
-        return {"points": 12, "max": max_points,
-                "reason": "Forecasted: time to prepare, but dates are estimates."}
-    if days is None:
-        return {"points": 6, "max": max_points, "reason": "Closing date not listed; verify on Grants.gov."}
-    if days >= 30:
-        points, why = 20, "30+ days to prepare an application."
-    elif days >= 14:
-        points, why = 14, "14-29 days left."
-    elif days >= 7:
-        points, why = 8, "7-13 days left; tight timeline."
+def combine_relevance(keyword, ai, description_loaded, profile):
+    """Strategic Fit Score: keyword heuristic, blended with a validated AI score if present."""
+    ai_ok = bool(ai) and ai.get("status") == "ok"
+    if keyword["score"] is None:
+        fit, method = None, "none"
+    elif ai_ok:
+        fit = round((1 - AI_WEIGHT) * keyword["score"] + AI_WEIGHT * ai["score"])
+        method = "keyword + AI (experimental 50/50 blend)"
     else:
-        points, why = 3, "Fewer than 7 days left."
-    return {"points": points, "max": max_points, "reason": f"Closes in {days} day(s). {why}"}
+        fit, method = keyword["score"], "keyword heuristic"
+    # Zero keyword overlap is "low" (official text checked) or "unassessed" (only the title
+    # was available) — never a definitive exclusion.
+    if fit is None:
+        level, label = "unassessed", "Fit not assessed"
+    elif fit > 0:
+        level, label = _fit_level(fit)
+    elif description_loaded or ai_ok:
+        level, label = "low", "Low fit — no plan evidence found"
+    else:
+        level, label = "unassessed", "Fit not assessed — description not loaded"
+    goals = list(keyword["matched_goals"])
+    if ai_ok and profile:
+        known = {g["goal_id"] for g in goals}
+        for goal in profile["goals"]:
+            if goal["goal_id"] in ai["goal_ids"] and goal["goal_id"] not in known:
+                goals.append({"goal_id": goal["goal_id"], "label": goal["label"], "quote": goal["quote"],
+                              "page": goal["page"], "plan_url": profile["plan_url"], "terms": [],
+                              "title_terms": [], "via_ai": True})
+    return {"fit_score": fit, "method": method, "level": level, "label": label,
+            "keyword": keyword, "ai": ai, "matched_goals": goals}
 
+
+# --------------------------------------------------------------------------- funding
 
 def _reported(amount):
     # Grants.gov uses 0 or 1 as placeholders when no amount is set.
     return amount is not None and amount > 1
 
 
-def score_funding(details, min_award):
-    max_points = WEIGHTS["funding"]
+def funding_summary(details):
+    """Accurate, informational funding description. Not used for scoring."""
     if not details:
-        return {"points": 8, "max": max_points, "reason": "Award amount not loaded."}
-    ceiling, floor = details.get("award_ceiling"), details.get("award_floor")
-    if _reported(ceiling):
-        if ceiling >= min_award:
-            why = f"Award ceiling ${ceiling:,.0f}" + (
-                f" meets your ${min_award:,.0f} minimum." if min_award else " reported.")
-            return {"points": 20, "max": max_points, "reason": why}
-        return {"points": 5, "max": max_points,
-                "reason": f"Award ceiling ${ceiling:,.0f} is below your ${min_award:,.0f} minimum."}
-    if _reported(floor) and floor >= min_award:
-        return {"points": 20, "max": max_points, "reason": f"Award floor ${floor:,.0f} meets your minimum."}
-    return {"points": 8, "max": max_points, "reason": "Award amount not reported by Grants.gov."}
+        return {"display": "Not loaded", "floor": None, "ceiling": None, "estimated_total": None,
+                "number_of_awards": None, "reported": False, "note": "Official details not loaded."}
+    floor, ceiling = details.get("award_floor"), details.get("award_ceiling")
+    total, awards = details.get("estimated_funding"), details.get("number_of_awards")
+    if _reported(floor) and _reported(ceiling):
+        display = f"${floor:,.0f} – ${ceiling:,.0f} per award"
+    elif _reported(ceiling):
+        display = f"Up to ${ceiling:,.0f} per award"
+    elif _reported(floor):
+        display = f"From ${floor:,.0f} per award"
+    elif _reported(total):
+        display = f"${total:,.0f} total program funding"
+    else:
+        display = "Not reported"
+    extras = []
+    if _reported(total) and display != f"${total:,.0f} total program funding":
+        extras.append(f"estimated total program funding ${total:,.0f}")
+    if _reported(awards):
+        extras.append(f"about {awards:,.0f} award(s) expected")
+    note = "Award ceilings are maximums, not guaranteed amounts."
+    if extras:
+        note = "Grants.gov lists " + " and ".join(extras) + ". " + note
+    return {"display": display, "floor": floor if _reported(floor) else None,
+            "ceiling": ceiling if _reported(ceiling) else None,
+            "estimated_total": total if _reported(total) else None,
+            "number_of_awards": awards if _reported(awards) else None,
+            "reported": display != "Not reported", "note": note,
+            "cost_sharing": details.get("cost_sharing")}
 
 
 # --------------------------------------------------------------------------- evaluation
 
 def _short_goal(label):
-    return label.split(" – ")[0] if " – " in label else label
+    return label.replace(" – ", ": ", 1)
 
 
-def build_explanation(profile, alignment, deadline, funding, eligibility):
-    parts = []
-    if alignment["matched_goals"]:
-        goals = "; ".join(
-            f"{_short_goal(g['label'])} ({', '.join(g['terms'])})" for g in alignment["matched_goals"][:3]
-        )
-        parts.append(f"Supports {profile['short_name']} {goals}.")
-    parts.append(deadline_phrase(deadline) + ".")
-    parts.append(funding["reason"])
-    parts.append(eligibility["label"] + ".")
-    return " ".join(parts)
+def why_this_matters(profile, relevance):
+    """One concise sentence for the card."""
+    goals = relevance["matched_goals"]
+    if not profile:
+        return "No verified strategic goals for this agency."
+    ai = relevance.get("ai") or {}
+    if ai.get("status") == "ok" and ai.get("explanation") and ai.get("score", 0) > 20:
+        return ai["explanation"]
+    if not goals:
+        return relevance["keyword"]["reason"]
+    first = goals[0]
+    terms = first["title_terms"] or first["terms"]
+    more = f" (+{len(goals) - 1} more goal{'s' if len(goals) > 2 else ''})" if len(goals) > 1 else ""
+    terms_text = f" — mentions {', '.join(terms[:3])}" if terms else ""
+    return f"Supports {profile['short_name']} {_short_goal(first['label'])}{terms_text}{more}."
 
 
-def deadline_phrase(deadline):
-    if deadline["status"] == FORECASTED:
-        return "Forecasted opportunity" + (
-            f", estimated close {deadline['close_date']}" if deadline["close_date"] else "")
-    if deadline["days_left"] is None:
-        return "Closing date not listed"
-    return f"Closes {deadline['close_date']} ({deadline['days_left']} days)"
-
-
-def evaluate_grant(hit, profile, details, settings, today):
-    """Screen and score one Grants.gov search hit. Returns a result record."""
+def evaluate_grant(hit, profile, details, settings, today, ai_result=None, announcement=None,
+                   ai_eligibility=None):
+    """Screen, assess and classify one Grants.gov search hit."""
     gid = str(hit.get("id") or "").strip()
-    deadline = classify_deadline(hit, details, today, settings.horizon_days)
-    eligibility = screen_eligibility(details, profile)
-    alignment = score_alignment(html.unescape(str(hit.get("title") or "")),
-                                (details or {}).get("description"), profile)
+    title = html.unescape(str(hit.get("title") or "")).strip() or "Untitled opportunity"
+    deadline = classify_deadline(hit, details, today)
+    source_url = f"https://www.grants.gov/search-results-detail/{gid}" if gid else None
+    eligibility = screen_eligibility(details, profile, title, source_url, ai_eligibility)
+    description = (details or {}).get("description") or ""
+    keyword = keyword_relevance(title, description, profile)
+    relevance = combine_relevance(keyword, ai_result, bool(description), profile)
+    funding = funding_summary(details)
+    effort = assess_effort(details, *(announcement or (None, None)))
 
     reasons = []  # (code, human-readable text)
     if deadline["status"] == CLOSED:
         reasons.append(("closed", f"Closed: {deadline['rule']}"))
-    elif deadline["within_horizon"] is False:
-        reasons.append(("outside_window",
-                        f"Closes in {deadline['days_left']} days, outside the {settings.horizon_days}-day window"))
-    if deadline["status"] == FORECASTED and not settings.include_forecasted:
-        reasons.append(("forecasted_hidden", "Forecasted grants are hidden by your settings"))
+    elif (deadline["status"] == OPEN and settings.min_days_left is not None
+          and deadline["days_left"] < settings.min_days_left):
+        reasons.append(("not_enough_time",
+                        f"Only {deadline['days_left']} days left (you asked for at least {settings.min_days_left})"))
     if deadline["status"] == UNKNOWN and not settings.include_unknown_deadline:
-        reasons.append(("unknown_deadline_hidden", "Closing date unknown and hidden by your settings"))
-    if eligibility["status"] == NOT_ELIGIBLE:
-        reasons.append(("not_eligible", f"Not eligible: {eligibility['reason']}"))
-    if alignment["points"] == 0:
-        reasons.append(("no_alignment_evidence", "No strategic-goal terms found in the title and official description"
-                        if details else "No strategic-goal terms in the title (official description not loaded)"))
+        reasons.append(("unknown_deadline_hidden", "No closing date listed (hidden by your settings)"))
+    if eligibility["status"] == INELIGIBLE:  # confirmed official restriction only
+        reasons.append(("not_eligible", eligibility["summary"]))
+    if settings.min_award and funding["ceiling"] is not None and funding["ceiling"] < settings.min_award:
+        reasons.append(("below_min_award",
+                        f"Award ceiling ${funding['ceiling']:,.0f} is below your ${settings.min_award:,.0f} minimum"))
+
+    if reasons:
+        section = SCREENED_OUT
+    elif eligibility["status"] == LIKELY_INELIGIBLE:
+        section = LIKELY_INELIGIBLE_SECTION
+    elif deadline["status"] == FORECASTED:
+        section = UPCOMING if relevance["fit_score"] else UPCOMING_LOW
+    elif relevance["fit_score"]:
+        section = PRIORITY
+    else:
+        section = LOW_EVIDENCE
 
     data_gaps = []
     if not details:
-        data_gaps.append("Official details not loaded: award amount and eligibility unverified")
+        data_gaps.append("Official details not loaded: funding, eligibility and effort are unverified")
     else:
-        if not _reported(details.get("award_ceiling")) and not _reported(details.get("award_floor")):
-            data_gaps.append("Award amount not reported")
-        if not details.get("description"):
+        if not funding["reported"]:
+            data_gaps.append("Award amount not reported on Grants.gov")
+        if not description:
             data_gaps.append("No official description available")
     if deadline["days_left"] is None:
         data_gaps.append("Closing date not listed")
-    region_flags = find_terms(hit.get("title"), OTHER_REGION_HINTS)
-    if region_flags:
-        data_gaps.append(f"Title mentions {', '.join(region_flags)}: check whether NC applicants qualify")
+    if settings.min_award and details and funding["ceiling"] is None:
+        data_gaps.append("Award ceiling not reported, so your minimum-award filter could not be applied")
 
-    record = {
+    return {
         "id": gid,
         "number": hit.get("number"),
-        "title": html.unescape(str(hit.get("title") or "")).strip() or "Untitled opportunity",
+        "title": title,
         "federal_agency": hit.get("agency") or hit.get("agencyCode") or "Unknown federal agency",
-        "source_url": f"https://www.grants.gov/search-results-detail/{gid}" if gid else None,
+        "source_url": source_url,
         "matched_queries": list(hit.get("_matched_queries", [])),
+        "section": section,
         "deadline": deadline,
+        "urgency": urgency(deadline),
         "eligibility": eligibility,
-        "award": {
-            "floor": (details or {}).get("award_floor"),
-            "ceiling": (details or {}).get("award_ceiling"),
-            "estimated_total": (details or {}).get("estimated_funding"),
-            "cost_sharing": (details or {}).get("cost_sharing"),
-            "loaded": bool(details),
-        },
-        "alignment": alignment,
+        "funding": funding,
+        "relevance": relevance,
+        "fit_score": relevance["fit_score"],
+        "effort": effort,
+        "why": why_this_matters(profile, relevance),
         "details_loaded": bool(details),
         "data_gaps": data_gaps,
         "screening": {"passed": not reasons, "codes": [c for c, _ in reasons],
                       "reasons": [text for _, text in reasons]},
-        "match_score": None,
-        "score_breakdown": None,
-        "explanation": None,
     }
-    if reasons:
-        return record
-
-    funding = score_funding(details, settings.min_award)
-    timing = score_deadline(deadline)
-    record["score_breakdown"] = {
-        "strategic_alignment": {k: alignment[k] for k in ("points", "max", "reason")},
-        "deadline": timing,
-        "funding": funding,
-    }
-    record["match_score"] = alignment["points"] + timing["points"] + funding["points"]
-    record["explanation"] = build_explanation(profile, alignment, deadline, funding, eligibility)
-    return record
 
 
 def rank_results(records):
-    """Highest Match Score first; ties favor stronger eligibility, then sooner deadline."""
+    """Highest Strategic Fit first; ties favor clearer eligibility. Deadline is not a ranking factor."""
     return sorted(records, key=lambda r: (
-        -(r["match_score"] or 0),
+        -(r["fit_score"] or 0),
         _ELIGIBILITY_RANK[r["eligibility"]["status"]],
-        r["deadline"]["days_left"] if r["deadline"]["days_left"] is not None else 10 ** 6,
+        r["title"].lower(),
         r["id"],
     ))
 
@@ -419,29 +414,32 @@ def build_queries(profile, extra_keywords=(), max_queries=8):
 def _safe_call(fn, *args):
     try:
         return fn(*args), None
-    except Exception as exc:  # noqa: BLE001 - one failing query must not break the run
+    except Exception as exc:  # noqa: BLE001 - one failing call must not break the run
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def run_matching(profile, settings=None, *, search_fn, details_fn, today=None,
-                 extra_keywords=(), details_cache=None):
-    """Retrieve, screen, score and rank grants for one agency profile.
+def run_matching(profile, settings=None, *, search_fn, details_fn, today=None, extra_keywords=(),
+                 details_cache=None, ai_evaluator=None, announcements=None, eligibility_evaluator=None):
+    """Retrieve, screen, assess and rank grants for one agency profile.
 
     search_fn(keyword, rows) -> list of Grants.gov search hits
     details_fn(opportunity_id) -> normalized details (services.opportunity_details)
+    ai_evaluator(record, profile, details) -> AI fit result (optional; services.ai_matching)
+    eligibility_evaluator(record, profile, details) -> AI eligibility result (optional; services.ai_eligibility)
+    announcements: {grant_id: (announcement_text, url)} from on-demand NOFO analysis
     Returns a JSON-serializable dict (schema in docs/MATCHING.md).
     """
     settings = settings or MatchSettings()
     today = today or date.today()
     details_cache = {} if details_cache is None else details_cache
+    announcements = announcements or {}
     queries = build_queries(profile, extra_keywords, settings.max_queries)
     errors = []
 
     with ThreadPoolExecutor(max_workers=settings.max_workers) as pool:
         outcomes = list(pool.map(lambda q: _safe_call(search_fn, q["text"], settings.rows_per_query), queries))
 
-    candidates = {}
-    coverage = []
+    candidates, coverage = {}, []
     for query, (hits, error) in zip(queries, outcomes):
         hits = hits or []
         coverage.append({"query": query["text"], "source": query["source"], "retrieved": len(hits),
@@ -450,27 +448,27 @@ def run_matching(profile, settings=None, *, search_fn, details_fn, today=None,
             errors.append(f"Search '{query['text']}' failed: {error}")
         for hit in hits:
             gid = str(hit.get("id") or "").strip()
-            if not gid:
-                continue
-            entry = candidates.setdefault(gid, dict(hit, _matched_queries=[]))
-            entry["_matched_queries"].append(query["text"])
+            if gid:
+                entry = candidates.setdefault(gid, dict(hit, _matched_queries=[]))
+                entry["_matched_queries"].append(query["text"])
 
-    # Load official details only for the most promising date-eligible candidates.
-    def prelim(hit):
-        deadline = classify_deadline(hit, None, today, settings.horizon_days)
-        alignment = score_alignment(hit.get("title"), "", profile)
-        return deadline, alignment
-
-    shortlist = []
-    for hit in candidates.values():
-        deadline, alignment = prelim(hit)
-        if deadline["status"] == CLOSED or deadline["within_horizon"] is False:
+    # Load official details for a deterministic shortlist: not closed, title evidence first, then
+    # grants found by several queries. The shortlist does not depend on the days-left filter, and
+    # only shortlisted details are used, so results never depend on what an earlier run cached
+    # (a stricter filter always returns a subset of a looser one).
+    shortlist, actionable = [], 0
+    for gid, hit in candidates.items():
+        deadline = classify_deadline(hit, None, today)
+        if deadline["status"] == CLOSED:
             continue
-        shortlist.append((-alignment["points"], -len(hit["_matched_queries"]),
-                          deadline["days_left"] if deadline["days_left"] is not None else 10 ** 6,
-                          str(hit["id"])))
+        if not (deadline["status"] == OPEN and settings.min_days_left is not None
+                and deadline["days_left"] < settings.min_days_left):
+            actionable += 1
+        title_score = keyword_relevance(html.unescape(str(hit.get("title") or "")), "", profile)["score"] or 0
+        shortlist.append((-title_score, -len(hit["_matched_queries"]), deadline["status"] != OPEN, gid))
     shortlist.sort()
-    to_fetch = [gid for *_, gid in shortlist if gid not in details_cache][:settings.detail_limit]
+    selected = {gid for *_, gid in shortlist[:settings.detail_limit]}
+    to_fetch = sorted(gid for gid in selected if gid not in details_cache)
     if to_fetch:
         with ThreadPoolExecutor(max_workers=settings.max_workers) as pool:
             fetched = list(pool.map(lambda gid: _safe_call(details_fn, gid), to_fetch))
@@ -480,13 +478,64 @@ def run_matching(profile, settings=None, *, search_fn, details_fn, today=None,
             else:
                 details_cache[gid] = details
 
-    records = [evaluate_grant(hit, profile, details_cache.get(gid), settings, today)
-               for gid, hit in candidates.items()]
-    passed = rank_results([r for r in records if r["screening"]["passed"]])
-    screened_out = [r for r in records if not r["screening"]["passed"]]
+    ai_fit, ai_elig = {}, {}
+
+    def details_for(gid):
+        return details_cache.get(gid) if gid in selected else None
+
+    def evaluate(gid):
+        return evaluate_grant(candidates[gid], profile, details_for(gid), settings, today,
+                              ai_result=ai_fit.get(gid), announcement=announcements.get(gid),
+                              ai_eligibility=ai_elig.get(gid))
+
+    records = {gid: evaluate(gid) for gid in candidates}
+
+    def run_ai(evaluator, chosen, store):
+        summary = {"status": "ok", "evaluated": 0, "accepted": 0, "rejected": 0, "errors": 0,
+                   "model": getattr(evaluator, "model_label", None)}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            outcomes = list(pool.map(lambda r: _safe_call(evaluator, r, profile, details_for(r["id"])), chosen))
+        for record, (result, error) in zip(chosen, outcomes):
+            result = result or {"status": "error", "errors": [error]}
+            store[record["id"]] = result
+            summary["evaluated"] += 1
+            status = result.get("status")
+            key = "accepted" if status == "ok" else "rejected" if status == "rejected" else "errors"
+            summary[key] += 1
+        if summary["evaluated"] and summary["errors"] == summary["evaluated"]:
+            summary["status"] = "error"
+        elif summary["errors"] or summary["rejected"]:
+            summary["status"] = "partial"
+        return summary
+
+    disabled = {"status": "disabled", "evaluated": 0, "accepted": 0, "rejected": 0, "errors": 0, "model": None}
+    ai_summary, elig_summary = dict(disabled), dict(disabled)
+    if profile and eligibility_evaluator is not None:
+        # Interpret eligibility where rules are not conclusive. Confirmed restrictions and
+        # grants screened out for other reasons are never sent to the model.
+        open_sections = (PRIORITY, UPCOMING, LIKELY_INELIGIBLE_SECTION)
+        candidates_for_elig = [r for r in records.values()
+                               if r["section"] in open_sections and r["details_loaded"]
+                               and r["eligibility"]["status"] in (NEEDS_REVIEW, LIKELY_ELIGIBLE, LIKELY_INELIGIBLE)]
+        chosen = rank_results(candidates_for_elig)[:settings.ai_eligibility_limit]
+        elig_summary = run_ai(eligibility_evaluator, chosen, ai_elig)
+    if profile and ai_evaluator is not None:
+        # Top keyword matches plus a few zero-keyword candidates with official text (false-negative check).
+        open_records = [r for r in records.values() if r["section"] in (PRIORITY, UPCOMING)]
+        rescue = [r for r in records.values() if r["section"] == LOW_EVIDENCE and r["details_loaded"]]
+        rescue_n = min(4, settings.ai_limit // 3)
+        chosen = rank_results(open_records)[:settings.ai_limit - rescue_n] + rescue[:rescue_n]
+        ai_summary = run_ai(ai_evaluator, chosen, ai_fit)
+    if ai_fit or ai_elig:
+        records = {gid: evaluate(gid) for gid in candidates}
+
+    by_section = {s: [] for s in (PRIORITY, LOW_EVIDENCE, UPCOMING, UPCOMING_LOW, LIKELY_INELIGIBLE_SECTION,
+                                  SCREENED_OUT)}
+    for record in records.values():
+        by_section[record["section"]].append(record)
 
     reason_counts = {}
-    for record in screened_out:
+    for record in by_section[SCREENED_OUT]:
         code = record["screening"]["codes"][0]
         reason_counts[code] = reason_counts.get(code, 0) + 1
 
@@ -496,17 +545,30 @@ def run_matching(profile, settings=None, *, search_fn, details_fn, today=None,
         "today": today.isoformat(),
         "agency": profile["name"] if profile else None,
         "settings": asdict(settings),
-        "weights": dict(WEIGHTS),
+        "fit_points": dict(FIT_POINTS),
+        "ai_weight": AI_WEIGHT,
         "queries": coverage,
+        "ai": ai_summary,
+        "ai_eligibility": elig_summary,
         "stats": {
             "unique_candidates": len(candidates),
-            "details_loaded": sum(1 for r in records if r["details_loaded"]),
-            "passed_screening": len(passed),
-            "screened_out": len(screened_out),
+            "actionable_candidates": actionable,
+            "details_loaded": sum(1 for r in records.values() if r["details_loaded"]),
+            "details_considered": len(selected),
+            "priority": len(by_section[PRIORITY]),
+            "low_evidence": len(by_section[LOW_EVIDENCE]),
+            "upcoming": len(by_section[UPCOMING]),
+            "upcoming_low_evidence": len(by_section[UPCOMING_LOW]),
+            "likely_ineligible": len(by_section[LIKELY_INELIGIBLE_SECTION]),
+            "screened_out": len(by_section[SCREENED_OUT]),
             "screened_out_by_reason": reason_counts,
+            "capped_queries": sum(1 for q in coverage if q["cap_reached"]),
             "possibly_incomplete": any(q["cap_reached"] or q["error"] for q in coverage),
         },
-        "results": passed,
-        "screened_out": screened_out,
+        "results": rank_results(by_section[PRIORITY]),
+        "low_evidence": rank_results(by_section[LOW_EVIDENCE]),
+        "upcoming": rank_results(by_section[UPCOMING]),
+        "likely_ineligible": rank_results(by_section[LIKELY_INELIGIBLE_SECTION]),
+        "screened_out": by_section[SCREENED_OUT],
         "errors": errors,
     }

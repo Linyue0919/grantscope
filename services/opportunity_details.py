@@ -12,6 +12,7 @@ import requests
 
 DETAIL_API_URL = "https://api.grants.gov/v1/api/fetchOpportunity"
 GRANT_URL = "https://www.grants.gov/search-results-detail/{id}"
+ATTACHMENT_URL = "https://www.grants.gov/grantsws/rest/opportunity/att/download/{id}"
 
 
 class OpportunityDetailsError(RuntimeError):
@@ -78,6 +79,22 @@ def parse_details(payload, opportunity_id):
                 "description": str(item.get("description") or "").strip(),
             })
 
+    attachments = []
+    for folder in data.get("synopsisAttachmentFolders") or []:
+        if not isinstance(folder, dict):
+            continue
+        for item in folder.get("synopsisAttachments") or []:
+            if isinstance(item, dict) and item.get("id"):
+                attachments.append({
+                    "id": str(item["id"]),
+                    "name": str(item.get("fileName") or item.get("fileDescription") or "").strip(),
+                    "folder": str(folder.get("folderType") or folder.get("folderName") or "").strip(),
+                    "mime_type": str(item.get("mimeType") or ""),
+                    "url": ATTACHMENT_URL.format(id=item["id"]),
+                })
+    instruments = [str(i.get("description") or "").strip()
+                   for i in section.get("fundingInstruments") or [] if isinstance(i, dict)]
+
     description = section.get("forecastDesc") if is_forecast else section.get("synopsisDesc")
     close_text = (
         section.get("estApplicationResponseDateStr") or section.get("estApplicationResponseDate")
@@ -95,6 +112,8 @@ def parse_details(payload, opportunity_id):
         "eligibility_text": strip_html(section.get("applicantEligibilityDesc")),
         "description": strip_html(description),
         "close_date_text": str(close_text).strip() if close_text else None,
+        "funding_instruments": [i for i in instruments if i],
+        "attachments": attachments,
         "source_url": grant_url(opportunity_id),
     }
 
