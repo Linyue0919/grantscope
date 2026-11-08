@@ -21,6 +21,7 @@ from ui import saved_store
 from ui.brief_sections import SECTION_DESCRIPTIONS, SECTION_RULES, SECTION_TITLES, group_views
 from ui.components.card import render_card, render_hidden, render_lower, render_soon
 from ui.components.detail_panel import render_panel
+from ui.export_actions import grant_pdf_button
 from ui.nav import PAGES
 from ui.view_model import agency_display_name, build_views, header_stats, to_eastern
 
@@ -281,4 +282,5 @@ def show_dashboard():
     if side is not None:
         with side:
             render_panel(panel_view, on_close=_close_panel, saved=saved_store.is_saved(agency, panel_view.id),
-                         on_toggle_save=_toggle_save, how_it_works_page=PAGES.get("how"))
+                         on_toggle_save=_toggle_save, how_it_works_page=PAGES.get("how"),
+                         extra_actions=lambda v: grant_pdf_button(v, agency, key=f"pdf_{v.id}"))

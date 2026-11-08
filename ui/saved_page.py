@@ -7,6 +7,7 @@ import streamlit as st
 from ui import saved_store
 from ui.components.card import card_header_html, chips_html
 from ui.components.detail_panel import render_panel
+from ui.export_actions import grant_pdf_button
 from ui.nav import PAGES
 from ui.view_model import RECOMMENDATION_LABELS, agency_display_name, view_from_dict
 
@@ -126,4 +127,5 @@ def show_saved(toolbar=None, card_links=None, panel_actions=None):
     if side is not None:
         with side:
             render_panel(panel_view, on_close=_close_saved, saved=True, on_toggle_save=_toggle,
-                         extra_actions=panel_actions, how_it_works_page=PAGES.get("how"))
+                         extra_actions=lambda v: grant_pdf_button(v, agency, key=f"spdf_{v.id}"),
+                         how_it_works_page=PAGES.get("how"))
