@@ -17,12 +17,11 @@ from services.application_effort import assess_effort  # noqa: F401 (shared with
 from services.grants_api import get_grants
 from services.match_engine import MatchSettings, run_matching
 from services.opportunity_details import fetch_opportunity_details
-from ui import saved_store
+from ui import my_grants_store
 from ui.brief_sections import SECTION_DESCRIPTIONS, SECTION_RULES, SECTION_TITLES, group_views
 from ui.components.card import render_card, render_hidden, render_lower, render_soon
 from ui.components.detail_panel import render_panel
-from ui.export_actions import grant_pdf_button, summary_pdf_button
-from ui.view_model import view_from_dict
+from ui.export_actions import grant_pdf_button
 from ui.nav import PAGES
 from ui.view_model import agency_display_name, build_views, header_stats, to_eastern
 
@@ -94,8 +93,13 @@ def _undo(opp_id):
     st.session_state.setdefault("brief_hidden", {}).pop(opp_id, None)
 
 
-def _toggle_save(view):
-    saved_store.toggle(_agency(), view)
+def _save_to_my_grants(view):
+    """Save into My Grants through Search's own save function (see ui/my_grants_store.py)."""
+    try:
+        my_grants_store.save(_agency(), view)
+        st.toast(f"Added to My Grants: {view.short_name}")
+    except (RuntimeError, ValueError):
+        st.toast("Couldn't save to My Grants right now. Try again in a moment.")
 
 
 def _refresh():
@@ -166,16 +170,16 @@ def _section_heading(name, count=None, extra=""):
                 f'<p class="gs-section-desc">{SECTION_DESCRIPTIONS[name]}{extra}</p>', unsafe_allow_html=True)
 
 
-def _render_cards(views, selected_id, hidden, agency):
+def _render_cards(views, selected_id, hidden, in_my_grants):
     for view in views:
         if hidden.get(view.id):
             render_hidden(view, on_undo=_undo, reason_key=f"reason_{view.id}")
             continue
         render_card(view, selected=view.id == selected_id, on_view=_select, on_hide=_hide,
-                    saved=saved_store.is_saved(agency, view.id), on_toggle_save=_toggle_save)
+                    saved=view.id in in_my_grants, on_toggle_save=_save_to_my_grants)
 
 
-def _render_sections(groups, selected_id, hidden, agency):
+def _render_sections(groups, selected_id, hidden, in_my_grants):
     top, check, soon, lower = groups["top"], groups["check"], groups["soon"], groups["lower"]
     if not any(groups.values()):
         st.info("No opportunities match these settings. Try fewer days to apply.")
@@ -184,7 +188,7 @@ def _render_sections(groups, selected_id, hidden, agency):
     if top:
         cap = SECTION_RULES["top_cap"]
         show_all = len(top) > cap and st.session_state.get("brief_top_all", False)
-        _render_cards(top if show_all else top[:cap], selected_id, hidden, agency)
+        _render_cards(top if show_all else top[:cap], selected_id, hidden, in_my_grants)
         if len(top) > cap:
             st.toggle(f"Show {len(top) - cap} more top candidates", key="brief_top_all")
     else:
@@ -193,7 +197,7 @@ def _render_sections(groups, selected_id, hidden, agency):
                     unsafe_allow_html=True)
     if check:
         _section_heading("check")
-        _render_cards(check, selected_id, hidden, agency)
+        _render_cards(check, selected_id, hidden, in_my_grants)
     with st.expander(f"**Opening soon ({len(soon)})**"):
         if soon:
             for view in soon:
@@ -211,21 +215,13 @@ def _render_sections(groups, selected_id, hidden, agency):
                     st.page_link(PAGES["browse"], label="Try Browse all for a custom search", width="content")
 
 
-def _render_saved_bar(agency, extra=None):
-    """Slim dark bar at the end of the brief when something is saved (sticky footers are fragile)."""
-    items = saved_store.list_saved(agency)
-    if not items:
+def _render_my_grants_bar(count):
+    """'{N} in My Grants · View My Grants' at the end of the brief when this agency has saved grants."""
+    if not count or "my_grants" not in PAGES:
         return
-    names = ", ".join(i.get("short_name", "") for i in items[:3]) + (f" and {len(items) - 3} more" if len(items) > 3 else "")
-    with st.container(key="savedbar"):
-        st.markdown(f'<div class="gs-savedbar"><b>{len(items)} saved:</b> {names}'
-                    '<span class="gs-savedbar-note"> · Saved for this session only</span></div>',
-                    unsafe_allow_html=True)
-        with st.container(horizontal=True, gap="small"):
-            if st.button("View saved", key="savedbar_view", type="primary"):
-                st.switch_page(PAGES["saved"])
-            if extra:
-                extra(agency, items)
+    with st.container(horizontal=True, gap="small", vertical_alignment="center", key="inlinelink_mygrants_bar"):
+        st.markdown(f'<p class="gs-scope"><b>{count} in My Grants</b> ·</p>', unsafe_allow_html=True, width="content")
+        st.page_link(PAGES["my_grants"], label="View My Grants", width="content")
 
 
 def _render_footer(profile):
@@ -262,6 +258,7 @@ def show_dashboard():
         selected = first.id if first else CLOSED
         st.session_state["brief_selected"] = selected
     panel_view = visible.get(selected) if selected != CLOSED else None
+    in_my_grants = my_grants_store.saved_ids(agency)
 
     if panel_view:
         main, side = st.columns([5, 3], gap="large")
@@ -269,12 +266,11 @@ def show_dashboard():
         main, side = st.container(), None
     with main:
         _render_header(agency, profile, result, min_days, compact=panel_view is not None)
-        _render_sections(groups, panel_view.id if panel_view else None, hidden, agency)
-        _render_saved_bar(agency, extra=lambda a, items: summary_pdf_button(
-            [view_from_dict(i) for i in items], a, key="savedbar_pdf"))
+        _render_sections(groups, panel_view.id if panel_view else None, hidden, in_my_grants)
+        _render_my_grants_bar(len(in_my_grants))
         _render_footer(profile)
     if side is not None:
         with side:
-            render_panel(panel_view, on_close=_close_panel, saved=saved_store.is_saved(agency, panel_view.id),
-                         on_toggle_save=_toggle_save, how_it_works_page=PAGES.get("how"),
+            render_panel(panel_view, on_close=_close_panel, saved=panel_view.id in in_my_grants,
+                         on_toggle_save=_save_to_my_grants, how_it_works_page=PAGES.get("how"),
                          extra_actions=lambda v: grant_pdf_button(v, agency, key=f"pdf_{v.id}"))

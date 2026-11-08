@@ -38,15 +38,21 @@ The optional `python scripts/azure_openai_smoke.py` makes an inference call; run
 See [actual live Dashboard and Sol acceptance results, failures and fixes](docs/live-ai-acceptance.md).
 Run `python -m pytest -q` after installing `requirements-dev.txt`. Regression tests cover generic title-only matches, official description evidence, and restricted-applicant eligibility. Official plan coverage, API pagination, applicant restrictions, and model quality need further validation before statewide operational use.
 
-## Brief, Saved and Alerts (dashboard redesign)
-The app uses top navigation: **Brief** (the Dashboard), **Browse all** (Search), **My Grants**, **Saved**, **Alerts** and **How it works**.
+## Brief, My Grants and Alerts (dashboard redesign)
+The app uses top navigation: **Brief** (the Dashboard), **Browse all** (Search), **My Grants**, **Alerts** and **How it works**.
 Without Azure OpenAI credentials, the Brief uses its rule-based checks and keyword matching only.
 
-- **Saved** opportunities (☆ Save on the Brief) are kept for the current browser session only: no accounts, nothing stored on the server. **My Grants** (saved from Search) is a separate, persistent list; both are kept for now.
-- **Alerts** previews a weekly digest, instant alerts for high-fit grants and deadline reminders for saved grants. Email delivery isn't switched on yet, and settings last for the session.
+- **☆ Save to My Grants** on the Brief saves into the same persistent My Grants store as Search
+  (`$GRANTSCOPE_DATA_DIR/grants.json`, default `.grantscope/grants.json`; on Azure `/home/grantscope/grants.json`).
+  The store is shared by everyone using the same app instance.
+- **Alerts** previews a weekly digest, instant alerts for high-fit grants and deadline reminders for grants in My Grants.
+  Email delivery isn't switched on yet, and settings last for the session.
 
 ## Demo prep
 Pre-warm the cache 15–20 minutes before a demo: open the Brief and switch to **NC Department of Health and Human
 Services**, **NC Department of Environmental Quality** and **NC Wildlife Resources Commission** once each. Results are
 cached for 30 minutes, so the demo then loads instantly. To check how many grants land in each section (with GPT-4o on,
 if configured): `python scripts/brief_section_counts.py`.
+
+To start with an empty **My Grants**, delete `grants.json` in the data directory (see above) and reload the page. The store
+is read fresh on every page load, so no restart is needed; research records in the same folder are unaffected.

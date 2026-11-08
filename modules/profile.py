@@ -1,7 +1,7 @@
 """Alerts page (nav label "Alerts"; file name kept so imports don't break).
 
 Proactive notifications for the agency selected on the Brief: weekly digest, instant
-alerts for high-fit grants, and deadline reminders for saved grants. The preview is
+alerts for high-fit grants, and deadline reminders for grants in My Grants. The preview is
 built from the Brief's cached backend result through ui/view_model.py; no new backend
 or LLM calls. Delivery isn't switched on yet and settings last for this session.
 """
@@ -62,12 +62,12 @@ def _load(agency):
     """(views, closing_soon, saved_views) from the Brief's cached pipeline; None on failure."""
     from modules.dashboard import _shared_details_cache, load_brief
     from services.application_effort import find_announcement
-    from ui.saved_page import saved_items
+    from ui import my_grants_store
 
     min_days = int(st.session_state.get("brief_days", 30))
     result, profile, views = load_brief(agency, min_days)
     closing = ad.closing_soon_views(result, profile, _shared_details_cache(), find_announcement, views)
-    saved = [view for view, _, _ in saved_items(agency)]
+    saved = my_grants_store.reminder_views(agency, views)
     return views, closing, saved, profile
 
 
@@ -163,17 +163,17 @@ def _instant_settings(views):
 
 def _reminder_settings(saved):
     with st.container(border=True, key="section_alerts_reminders"):
-        st.markdown('<div class="gs-h3 gs-h3-first">Deadline reminders for saved grants</div>', unsafe_allow_html=True)
+        st.markdown('<div class="gs-h3 gs-h3-first">Deadline reminders for My Grants</div>', unsafe_allow_html=True)
         with st.container(horizontal=True, gap="medium"):
             st.checkbox("14 days before", key=_key("remind_14"))
             st.checkbox("3 days before", key=_key("remind_3"))
         chosen = tuple(n for n, k in ((14, "alerts_remind_14"), (3, "alerts_remind_3")) if st.session_state[k])
         if saved is None:
-            st.markdown('<p class="gs-small">Saved grants couldn\'t be loaded right now.</p>', unsafe_allow_html=True)
+            st.markdown('<p class="gs-small">My Grants couldn\'t be loaded right now.</p>', unsafe_allow_html=True)
             return
         if not saved:
-            st.markdown('<p class="gs-small">No saved grants yet. Use ☆ Save on the Brief and reminders will '
-                        'follow their deadlines.</p>', unsafe_allow_html=True)
+            st.markdown('<p class="gs-small">Nothing in My Grants for this agency yet. Use ☆ Save to My Grants on '
+                        'the Brief and reminders will follow their deadlines.</p>', unsafe_allow_html=True)
             return
         rows, skipped = ad.reminder_schedule(saved, chosen)
         lines = []
@@ -184,12 +184,12 @@ def _reminder_settings(saved):
                             f'<span class="gs-muted">({n} days before the deadline)</span></li>'
                             for when, n, v in rows[:5])
             more = f'<li class="gs-muted">and {len(rows) - 5} more</li>' if len(rows) > 5 else ""
-            lines.append(f'Upcoming reminders for your {len(saved)} saved grant{"s" if len(saved) != 1 else ""}:'
+            lines.append(f'Upcoming reminders for the {len(saved)} grant{"s" if len(saved) != 1 else ""} in My Grants:'
                          f'<ul class="gs-remind">{items}{more}</ul>')
         else:
             lines.append("No upcoming reminder dates: the chosen reminder days have already passed.")
         if skipped:
-            lines.append(f'{skipped} saved grant{"s have" if skipped != 1 else " has"} no fixed deadline, so '
+            lines.append(f'{skipped} grant{"s" if skipped != 1 else ""} in My Grants {"have" if skipped != 1 else "has"} no fixed deadline, so '
                          f'{"they get" if skipped != 1 else "it gets"} no reminders.')
         st.markdown('<div class="gs-small">' + " ".join(lines) + "</div>", unsafe_allow_html=True)
 

@@ -42,8 +42,9 @@ def render_panel(view, *, on_close, saved=None, on_toggle_save=None, extra_actio
         if on_toggle_save is not None or extra_actions:
             with st.container(horizontal=True, gap="small", vertical_alignment="center"):
                 if on_toggle_save is not None:
-                    st.button("★ Saved" if saved else "☆ Save", key=f"panel_save_{view.id}",
-                              on_click=on_toggle_save, args=(view,))
+                    st.button("★ In My Grants" if saved else "☆ Save to My Grants", key=f"panel_save_{view.id}",
+                              on_click=on_toggle_save, args=(view,), disabled=bool(saved),
+                              help="Already in My Grants. Edit or remove it there." if saved else "Add to My Grants")
                 if extra_actions:
                     extra_actions(view)
 

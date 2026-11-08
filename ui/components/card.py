@@ -63,8 +63,9 @@ def render_card(view, *, selected, on_view, on_hide, saved=None, on_toggle_save=
             st.button("Showing details" if selected else "View details", key=f"view_{view.id}", type="primary",
                       on_click=on_view, args=(view.id,))
             if on_toggle_save is not None:
-                st.button("★ Saved" if saved else "☆ Save", key=f"save_{view.id}",
-                          on_click=on_toggle_save, args=(view,))
+                st.button("★ In My Grants" if saved else "☆ Save to My Grants", key=f"save_{view.id}",
+                          on_click=on_toggle_save, args=(view,), disabled=bool(saved),
+                          help="Already in My Grants. Edit or remove it there." if saved else "Add to My Grants")
             if view.grants_gov_url:
                 st.link_button("Grants.gov listing ↗", view.grants_gov_url)
             if view.nofo_url:

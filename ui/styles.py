@@ -125,6 +125,8 @@ a { color: var(--gs-navy); }
 .stApp .gs-savedbar { background: #1B2230; color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 14px; margin-top: 18px; }
 .stApp .gs-savedbar b { color: #fff; }
 .stApp .gs-savedbar-note { color: #C9D1DC; }
+.st-key-inlinelink_mygrants_bar { background: var(--gs-tint); border-radius: 10px; padding: 10px 16px; margin-top: 18px; }
+.st-key-inlinelink_mygrants_bar p { margin: 0 !important; }
 /* Alerts page */
 .stApp .gs-h3-first { margin-top: 0; }
 .stApp .gs-count { background: var(--gs-tint); color: var(--gs-text); border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.4; }

@@ -4,10 +4,8 @@ from modules.dashboard import show_dashboard
 from modules.my_grants import show_my_grants
 from modules.profile import show_profile  # Alerts page
 from modules.search import show_search
-from ui import saved_store
 from ui.how_it_works import show_ai_help, show_how_it_works
 from ui.nav import PAGES
-from ui.saved_page import show_saved
 from ui.styles import inject_css
 
 st.set_page_config(page_title="GrantScope", page_icon="ui/assets/nc.svg", layout="wide")
@@ -18,7 +16,6 @@ PAGES.update({
     "brief": st.Page(show_dashboard, title="Brief", url_path="brief", default=True),
     "browse": st.Page(show_search, title="Browse all", url_path="browse"),
     "my_grants": st.Page(show_my_grants, title="My Grants", url_path="my-grants"),
-    "saved": st.Page(show_saved, title=f"Saved ({saved_store.count_all()})", url_path="saved"),
     "alerts": st.Page(show_profile, title="Alerts", url_path="alerts"),
     "how": st.Page(show_how_it_works, title="How it works", url_path="how-it-works"),
 })

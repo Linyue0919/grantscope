@@ -116,6 +116,8 @@ To decide:
 
 ## 6. My Grants vs Saved
 
+> **Decision (Nov 8):** we're keeping My Grants and dropping Saved. On `integration`, the Brief's "☆ Save to My Grants" calls Search's own `save_research_record()` with `LocalGrantStore` (adapter: `ui/my_grants_store.py`). Alerts reminders read My Grants, and Saved is off the nav (its files remain, unused). No Search or My Grants code changed. The comparison below is kept for reference.
+
 | | **My Grants** (yours) | **Saved** (ours) |
 |---|---|---|
 | Where you save from | Search: "Save to My Grants" on result cards | Brief: "☆ Save" on cards and in the detail panel |
