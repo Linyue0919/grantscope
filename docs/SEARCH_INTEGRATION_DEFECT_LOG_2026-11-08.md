@@ -36,3 +36,9 @@ Scope: `fix/demo-search-precision` only. Do not change Dashboard's original matc
 - **S-11 mitigation committed**: `run_matching` accepts optional `ai_candidate_ranker`; the original Dashboard path leaves it unset and retains original behavior. Search passes project-activity evidence ranking based on the official loaded description. GPT-4o's original strategic-goal prompt, source validation, score, and eligibility logic are unchanged.
 - Added a synthetic two-grant regression test verifying that, with `ai_limit=1`, Search chooses the watershed restoration opportunity over a generic environmental policy title for GPT-4o assessment.
 - **Limitation:** This improves *which* candidates get a strategic-goal assessment; it does **not** make GPT-4o assess user-project suitability. Nor does it rescue candidates omitted by the earlier official-detail shortlist. Tests not executed yet.
+
+## Mandatory Azure release gate (user-confirmed)
+- **Deliverable includes the live Azure web app**, not merely GitHub code or a local Streamlit demonstration.
+- Do not merge/deploy this branch until the synthetic regression tests and full suite pass, teammate/Codex concurrent changes are reconciled, and the release owner approves integration.
+- Validate on the deployed Azure URL: real Grants.gov retrieval, one or two genuinely open and relevant grants, official applicant restrictions and dates, GPT-4o strategic evaluation coverage and citations, application effort, and existing Dashboard/Sol persistence.
+- Capture the deployed commit SHA and the exact time and input of each live smoke test; log observed results, including failures. Do not claim deployment or live validation without actual evidence.
