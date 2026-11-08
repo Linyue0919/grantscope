@@ -1,5 +1,7 @@
-streamlit
-requests
-openai>=1.40
-pypdf>=4.0
-fpdf2>=2.7
+streamlit==1.51.0
+requests==2.32.5
+openai==3.46.0
+pypdf==6.21.4
+azure-identity==1.27.0
+cryptography==50.0.2
+fpdf2==2.9.0

@@ -13,6 +13,7 @@ from services.agency_profiles import get_agency_profile, list_profiled_agencies
 from services.ai_eligibility import AzureEligibilityEvaluator
 from services.ai_matching import AzureFitEvaluator, load_ai_config
 from services.application_effort import find_announcement
+from services.application_effort import assess_effort  # noqa: F401 (shared with Search; see test_shared_search_handoff)
 from services.grants_api import get_grants
 from services.match_engine import MatchSettings, run_matching
 from services.opportunity_details import fetch_opportunity_details

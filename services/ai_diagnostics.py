@@ -86,7 +86,7 @@ def validate_config_format(config):
         warnings.append("API key contains whitespace or line breaks (copy/paste issue).")
     if key.strip().lower().startswith(("<", "your")):
         warnings.append("API key still looks like the template placeholder.")
-    if len(key) < 20:
+    if config.get("auth_mode", "api_key") == "api_key" and len(key) < 20:
         warnings.append("API key looks too short to be valid.")
     if not API_VERSION_RX.match(str(config.get("api_version") or "")):
         warnings.append("API version should look like 2024-10-21 or 2025-01-01-preview.")
