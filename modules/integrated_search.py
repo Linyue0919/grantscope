@@ -78,6 +78,9 @@ def show_search_screening():
                 if ai_fit.get('status') == 'ok' and isinstance(ai_score, int)
                 else 'Unavailable for this candidate; see AI evaluation coverage below.'
             ))
+            if ai_fit.get('status') not in (None, 'ok'):
+                st.caption('AI assessment status: '+str(ai_fit.get('status'))+
+                           '. A missing or rejected assessment is not a zero fit score.')
             st.write('**Strategic Fit:** '+(
                 f"{strategic_score}/100 from verified agency goals"
                 if isinstance(strategic_score, int)
@@ -169,6 +172,12 @@ def show_search_screening():
         ai=foundation.get('ai') or {}
         st.caption(f"GPT-4o strategic alignment: {ai.get('status', 'unknown')}; evaluated {ai.get('evaluated', 0)}, accepted {ai.get('accepted', 0)}, rejected {ai.get('rejected', 0)}, errors {ai.get('errors', 0)}. This is a bounded batch, not a project-fit score.")
         st.caption('AI eligibility interpretation: '+str((foundation.get('ai_eligibility') or {}).get('status', 'unknown')))
+        if not result.get('agency') or not any(r.get('relevance', {}).get('keyword', {}).get('score') is not None for r in result['all_records']):
+            st.caption('No verified agency strategic-goal profile was available; Dashboard strategic AI assessment cannot run for this agency.')
+        elif ai.get('status') == 'disabled':
+            st.caption('GPT-4o was not configured or not enabled in this runtime. Check Azure configuration without exposing secrets.')
+        elif ai.get('status') in {'error', 'partial'}:
+            st.caption('Some AI calls failed or evidence validation rejected responses. Review sanitized server diagnostics; do not treat these as zero-fit grants.')
         st.caption(f"{stats['unique_candidates']} unique opportunities retrieved; {stats['details_loaded']} official details checked. Up to eight queries and 100 results per query; coverage is not exhaustive.")
         if len(potentials)>5:st.caption(f'{len(potentials)-5} additional screened leads remain in the audit download.')
         st.download_button('Download screening audit',json.dumps({**result,'deep_research':deep},ensure_ascii=False,default=str),file_name='grantscope-screening-audit.json',mime='application/json')
