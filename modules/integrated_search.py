@@ -63,7 +63,7 @@ def show_search_screening():
             st.subheader(record['title']);st.write('**Potential Match — full research incomplete**')
             st.caption(f"{record['federal_agency']} · Opportunity {oid} · Posted · Closes {record['deadline']['close_date'] or 'No fixed deadline; rolling availability needs verification'}")
             fit=record.get('project_fit', {})
-            st.write('**Project Fit:** '+(
+            st.write('**Official activity evidence:** '+(
                 'Supported by official summary activity evidence: '+
                 ', '.join(match['activity'] for match in fit.get('matches', []))
                 if fit.get('supported_for_screening') else
@@ -124,7 +124,7 @@ def show_search_screening():
                 for gap in record['data_gaps']:st.caption(gap)
             st.link_button('Official opportunity',record['source_url'])
             research_label='Retry Deep Research' if research and research.get('state')==ResearchState.RESEARCH_FAILED.value else 'Resume Deep Research' if research else 'Deep Research'
-            if st.button(research_label,key='screened_deep_'+oid+'_'+key[-16:],disabled=bool(research and research.get('inflight_stage'))):
+            if os.environ.get('GRANTSCOPE_ENABLE_SEARCH_DEEP_RESEARCH') == '1' and st.button(research_label,key='screened_deep_'+oid+'_'+key[-16:],disabled=bool(research and research.get('inflight_stage'))):
                 try:
                     with st.spinner('Reading official notices and checking this opportunity…'):
                         run=research_one_candidate(result,oid,configured_provider(st.secrets),cache=cache,
