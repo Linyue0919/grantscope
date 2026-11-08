@@ -17,7 +17,7 @@ from services.application_effort import assess_effort  # noqa: F401 (shared with
 from services.grants_api import get_grants
 from services.match_engine import MatchSettings, run_matching
 from services.opportunity_details import fetch_opportunity_details
-from ui import my_grants_store
+from ui import effort_on_demand, my_grants_store
 from ui.brief_sections import SECTION_DESCRIPTIONS, SECTION_RULES, SECTION_TITLES, group_views
 from ui.components.card import render_card, render_hidden, render_lower, render_soon
 from ui.components.detail_panel import render_panel
@@ -234,6 +234,19 @@ def _render_footer(profile):
                 'GrantScope never guarantees eligibility or awards.</p></div>', unsafe_allow_html=True)
 
 
+def _load_full_notice_effort(view):
+    """On demand: read the full funding notice for the open panel (rule-based, no LLM), once per grant."""
+    tried = st.session_state.setdefault("brief_effort_tried", set())
+    if effort_on_demand.cached(view.id) is not None or view.id in tried:
+        return
+    tried.add(view.id)
+    with st.spinner("Reading the full funding notice…"):
+        outcome = effort_on_demand.compute(view.id, _shared_details_cache().get(view.id))
+    if outcome and outcome.get("effort"):
+        st.rerun()  # cached now: refresh the card's Effort chip and the panel together
+    effort_on_demand.apply(view, outcome)
+
+
 # --------------------------------------------------------------------------- page
 
 def show_dashboard():
@@ -249,6 +262,8 @@ def show_dashboard():
             st.error("Couldn't load opportunities from Grants.gov right now. Try Refresh data in a moment.")
             return
 
+    for view in views:  # full-notice effort for grants whose panel was opened before (cached per id)
+        effort_on_demand.apply(view, effort_on_demand.cached(view.id))
     groups = group_views(views)
     selected = st.session_state.get("brief_selected")
     hidden = st.session_state["brief_hidden"]
@@ -271,6 +286,7 @@ def show_dashboard():
         _render_footer(profile)
     if side is not None:
         with side:
+            _load_full_notice_effort(panel_view)
             render_panel(panel_view, on_close=_close_panel, saved=panel_view.id in in_my_grants,
                          on_toggle_save=_save_to_my_grants, how_it_works_page=PAGES.get("how"),
                          extra_actions=lambda v: grant_pdf_button(v, agency, key=f"pdf_{v.id}"))
