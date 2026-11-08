@@ -100,9 +100,15 @@ def parse_details(payload, opportunity_id):
         section.get("estApplicationResponseDateStr") or section.get("estApplicationResponseDate")
         if is_forecast else section.get("responseDateStr") or section.get("responseDate")
     )
+    post_text = (
+        section.get("estPostDateStr") or section.get("estPostDate")
+        if is_forecast else section.get("postDateStr") or section.get("postDate")
+    )
     return {
         "id": str(opportunity_id),
         "is_forecast": is_forecast,
+        "estimated_post_date": str(post_text).strip() if post_text else None,
+        "estimated_close_date": str(close_text).strip() if close_text else None,
         "opportunity_status": str(data.get("ost") or ""),
         "award_floor": _amount(section.get("awardFloor")),
         "award_ceiling": _amount(section.get("awardCeiling")),

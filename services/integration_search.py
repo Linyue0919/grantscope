@@ -175,13 +175,17 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         if not reasons:potentials.append(record)
     potentials.sort(key=lambda r:(-r['project_fit']['rank'],r['eligibility']['status']!='likely_eligible',
                                   bool(r['funding_preference_note']),r['deadline']['close_date'],r['id']))
-    needs_verification=[]
+    needs_verification=[];forecasted=[]
     for record in all_records:
         if record in potentials or not record.get('details_loaded'):
             continue
         if record['eligibility']['status'] == INELIGIBLE:
             continue
         reasons=record.get('project_screening_reasons', [])
+        if record['deadline']['status'] == 'forecasted' and record.get('project_fit', {}).get('supported_for_screening'):
+            record['forecast_reasons']=reasons
+            forecasted.append(record)
+            continue
         verification_gap=any(
             phrase in reason for reason in reasons
             for phrase in (
@@ -194,7 +198,8 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
             record['verification_reasons']=reasons
             needs_verification.append(record)
     needs_verification.sort(key=lambda r:(-r['project_fit']['rank'],r['id']))
-    return {'potentials':potentials,'needs_verification':needs_verification,
+    forecasted.sort(key=lambda r:(-r['project_fit']['rank'],r['id']))
+    return {'potentials':potentials,'needs_verification':needs_verification,'forecasted':forecasted,
             'all_records':all_records,'details':details,'foundation':result,
             'agency':agency,'project':project,'amount':amount,'earliest':str(earliest) if earliest else None,
             'screening_only':True,'notice_screening_checks':notice_checks}

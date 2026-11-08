@@ -183,6 +183,31 @@ def test_needs_verification_is_visible_separately_from_open_potential_matches():
     assert "does not confirm open status or eligibility" in rendered
 
 
+def test_forecasted_opportunity_keeps_estimated_dates_separate_from_unknown():
+    project = "Expand rural mental health services and school-based telehealth clinics for students in North Carolina."
+    hit = {"id": "361521", "title": "Forecasted Rural Mental Health Support",
+           "oppStatus": "forecasted"}
+    official = details(desc="Mental health services and telehealth clinics for rural schools and students.")
+    official.update(
+        opportunity_status="FORECASTED",
+        is_forecast=True,
+        estimated_post_date="2027-01-27",
+        estimated_close_date="2027-05-27",
+    )
+    result = search_potential_matches(
+        "Department of Environmental Quality", project,
+        search_fn=lambda *args: [hit], details_fn=lambda oid: official,
+        today=date(2026, 11, 8),
+    )
+    assert not result["potentials"]
+    assert not result["needs_verification"]
+    assert [record["id"] for record in result["forecasted"]] == ["361521"]
+    record = result["forecasted"][0]
+    assert record["deadline"]["status"] == "forecasted"
+    assert official["estimated_post_date"] == "2027-01-27"
+    assert official["estimated_close_date"] == "2027-05-27"
+
+
 def test_search_cards_render_shared_dashboard_assessment_fields():
     result = screen()
     lead = result["potentials"][0]

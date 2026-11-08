@@ -44,7 +44,7 @@ def show_search_screening():
                 st.error('Official opportunity screening could not finish. No matches are being invented.');return
     result=st.session_state.get(key)
     if not result:return
-    potentials=result['potentials'];needs_verification=result.get('needs_verification',[]);store=LocalGrantStore()
+    potentials=result['potentials'];needs_verification=result.get('needs_verification',[]);forecasted=result.get('forecasted',[]);store=LocalGrantStore()
     st.subheader('Potential Matches')
     st.caption('Project-specific results use the shared Dashboard assessment pipeline, including bounded GPT-4o fit review, official eligibility checks, citation validation, and Application Effort analysis. Results are not legal eligibility determinations.')
     if not potentials:st.info('No sufficiently relevant, open potential matches passed screening. This is a bounded search, not proof that no funding exists.')
@@ -150,6 +150,21 @@ def show_search_screening():
                 ai_fit=record.get('relevance', {}).get('ai') or {}
                 if ai_fit.get('status') == 'ok':
                     st.caption(f"Shared GPT-4o project assessment: {ai_fit.get('score')}/100; this does not confirm open status or eligibility.")
+                st.link_button('Review official opportunity',
+                               f"https://www.grants.gov/search-results-detail/{record['id']}")
+    if forecasted:
+        with st.expander(f'Forecasted opportunities ({len(forecasted)})'):
+            st.caption('These opportunities are forecasted, not open for applications. Dates below are official estimates and may change; they are not final deadlines.')
+            for record in forecasted[:10]:
+                details=result['details'].get(record['id']) or {}
+                post=details.get('estimated_post_date') or 'Not supplied'
+                due=details.get('estimated_close_date') or record['deadline'].get('close_date') or 'Not supplied'
+                st.write(f"**{record['title']}** · Opportunity {record['id']}")
+                st.caption(f"Estimated post date: {post} · Estimated due date: {due}")
+                st.caption('Status: Forecasted — not currently accepting applications.')
+                ai_fit=record.get('relevance', {}).get('ai') or {}
+                if ai_fit.get('status') == 'ok':
+                    st.caption(f"Shared GPT-4o project assessment: {ai_fit.get('score')}/100; this does not establish an open application or final deadline.")
                 st.link_button('Review official opportunity',
                                f"https://www.grants.gov/search-results-detail/{record['id']}")
     with st.expander('Coverage, other candidates and exclusions'):
