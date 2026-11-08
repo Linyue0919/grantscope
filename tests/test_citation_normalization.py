@@ -43,3 +43,11 @@ def test_unqualified_funding_inference_is_blocked_even_with_a_real_quote():
     r=check('Restoration improves water quality','Restoration improves water quality',
             statement='Sensor purchases are allowable',kind='reasoned_inference')
     assert not r['passed'] and r['category']=='unsupported_material_assertion'
+
+
+def test_cost_share_arithmetic_is_not_an_applicant_eligibility_claim():
+    quote='Generally, the cost share for this program is up to 75% federal and 25% non-federal funding.'
+    statement='At the general maximum 75% federal share, a $300,000 federal request requires $400,000 in eligible total costs and $100,000 non-federal share. Commitments are absent.'
+    assert check(quote,quote,statement=statement,kind='reasoned_inference')['passed']
+    assert not check(quote,quote,statement='The project is eligible for $300,000.',kind='reasoned_inference')['passed']
+    assert not check(quote,quote,statement='Equipment purchases are allowable as eligible total costs.',kind='reasoned_inference')['passed']

@@ -224,6 +224,11 @@ def render_dynamic_result(record,agency,project,store,scope):
         st.write('**CAN WE APPLY?** '+result['can_apply'])
         st.write('**SHOULD WE APPLY?** '+result['should_apply'])
         st.write('**CAN WE ACT IN TIME?** '+result['can_act_in_time'])
+        from services.preparation_time import preparation_estimate
+        prep=preparation_estimate(record)
+        st.write('**Application preparation:** '+prep['summary'])
+        st.caption('Confidence: '+prep['confidence']+' · '+(prep['timing'] if prep['available'] else prep['reason']))
+        if prep['available']:st.caption('Assumes dedicated staff, parallel drafting/budget work and timely external responses; not an official processing-time standard.')
         st.write('**Project relevance:** '+str(decision['project_activity_score'])+'/100 · **Strategic relevance:** '+(str(decision['strategic_score'])+'/100' if decision['strategic_score'] is not None else 'Unavailable'))
         st.text(decision['decision_rationale'])
         st.caption('Model-proposed viability: '+record['model_viability']+' · Final engine classification: '+record['classification'])

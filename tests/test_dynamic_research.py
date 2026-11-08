@@ -167,31 +167,32 @@ def test_user_can_research_a_low_gpt4o_priority_with_small_budget():
 def test_streamlit_multi_grant_dynamic_research_and_save_without_a_live_call(tmp_path):
     from streamlit.testing.v1 import AppTest
     from services.grant_store import LocalGrantStore
-    provider=Provider();store=LocalGrantStore(tmp_path/'saved.json');cache=Mock();cache.get.return_value={'records':[]}
+    from tests.test_adaptive_search import details
+    provider=Provider();store=LocalGrantStore(tmp_path/'saved.json')
     research_store=ResearchStore(tmp_path/'research')
-    with patch('modules.search_workflow.get_grant_details',return_value={}),patch('modules.search_workflow.get_grants',return_value=GRANTS),patch('modules.search_workflow.AIRecommendationCache',return_value=cache),\
+    def triage(provider,items):
+        return {'priorities':{r.opportunity.opportunity_id:{'opportunity_id':r.opportunity.opportunity_id,
+            'priority_score':70,'uncertain':True,'reason':'Synthetic summary priority'} for r,_ in items},'usage':{}}
+    with patch('modules.search_workflow.get_grant_details',side_effect=details),patch('modules.search_workflow.get_grants',return_value=GRANTS),\
          patch('modules.search_workflow.LocalGrantStore',return_value=store),patch('modules.search_workflow.ResearchStore',return_value=research_store),\
          patch('modules.search_workflow.configured_provider',return_value=provider),patch('services.research_engine.OfficialEvidenceClient',return_value=Evidence()),\
-         patch('modules.search.prepare_ai_recommendations') as legacy_paid:
+         patch('services.research_priority.batch_prioritize',side_effect=triage),patch('modules.search.prepare_ai_recommendations') as legacy_paid:
         at=AppTest.from_string('from modules.search import show_search\nshow_search()').run()
-        assert not at.checkbox
-        at.selectbox(key='search_agency').select('Other NC agency').run()
-        at.text_input(key='search_custom_agency').input('Synthetic NC technology office').run()
-        at.text_area(key='search_project').input('Rural broadband buildout')
+        assert not at.checkbox and not at.text_input
+        at.selectbox(key='search_agency').select('Department of Commerce').run()
+        at.text_area(key='search_project').input('Build rural broadband infrastructure for North Carolina residents to improve reliable internet access.')
         at.button(key='search_submit').click().run()
-        assert not at.exception
-        assert len(provider.calls)==4
-        assert all(c[2]['original_request']['agency']['name']=='Synthetic NC technology office' for c in provider.calls)
-        assert len({c[0] for c in provider.calls})==2
-        assert any('2 researched with validated sources' in e.value for e in at.markdown)
+        assert not at.exception and len(provider.calls)==8
+        assert len({c[0] for c in provider.calls})==4
+        assert any('qualified opportunities' in e.value for e in at.subheader)
         save=next(b for b in at.button if b.key and b.key.startswith('workflow_save_'))
         oid=save.key.rsplit('_',1)[1]
         at.button(key=save.key).click().run()
-        assert 'Original project: Rural broadband' in store.get('Synthetic NC technology office',oid)['notes']
-        assert len(provider.calls)==4
+        assert 'Original project: Build rural broadband' in store.get('Department of Commerce',oid)['notes']
+        assert len(provider.calls)==8
         at.button(key='search_submit').click().run()
-        assert len(provider.calls)==4 # explicit identical Search reuses matching verified outputs
-        legacy_paid.assert_not_called();cache.save.assert_not_called()
+        assert len(provider.calls)==8
+        legacy_paid.assert_not_called()
 
 
 def test_real_recorded_opportunities_remain_reviewable_when_notices_unavailable():

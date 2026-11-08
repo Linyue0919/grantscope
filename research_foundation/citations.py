@@ -32,8 +32,12 @@ def citation_checks(value, packet):
         statement = claim['statement'].strip()
         assertion = re.search(r'\b(?:DEQ|applicant|agency|project|we|you|it)\s+(?:is|are|can|does|will)\s+(?:directly\s+)?(?:eligible|qualif\w*|apply\b|ready\b|allowable|suitable|meet\w*\s+(?:all\s+)?requirements)', statement, re.I)
         explicit_unknown = re.search(r'\b(?:whether|unconfirmed|unknown|not established|not confirmed|needs verification|not proven|not eligible)\b', statement, re.I)
+        # 'Eligible total costs' denotes the base of a cost-share calculation,
+        # not an assertion that an applicant or activity is eligible. Keep all
+        # other eligibility/permission predicates and exact-source checks intact.
+        permission_statement = re.sub(r'\beligible total costs\b', 'total costs', statement, flags=re.I)
         material_inference = (claim['kind'] == 'reasoned_inference'
-                              and re.search(r'\b(?:eligible|qualifies|ready|allowable|suitable|permitted|funded|can apply|meets requirements)\b', statement, re.I)
+                              and re.search(r'\b(?:eligible|qualifies|ready|allowable|suitable|permitted|funded|can apply|meets requirements)\b', permission_statement, re.I)
                               and not re.search(r'\b(?:may|might|could|whether|unconfirmed|unknown|not|unresolved|conditional)\b', statement, re.I))
         if (assertion and not explicit_unknown) or material_inference:
             result['category'] = 'unsupported_material_assertion'

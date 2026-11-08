@@ -1,12 +1,14 @@
 """Staff-facing one-click Search; operational controls stay in server configuration."""
 import json,os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import streamlit as st
 from services.agency_directory import AGENCIES
 from services.discovery import diversified_retrieval_queries,AIRecommendationCache
 from services.grants_api import get_grants,get_grant_details
 from services.grant_store import LocalGrantStore
 from services.search_foundation import discover_project
-from services.search_workflow import shortlist_review,rank_results,display_category,opportunity_timing
+from services.search_workflow import shortlist_review,rank_results,display_category,opportunity_timing,qualified_records,run_adaptive_research,record_timing
 from services.research_engine import (ResearchStore,ResearchBudget,run_research,initial_records,
     request_for_candidate,context_key,protocol_hash,configured_provider)
 from modules.search_research import save_research_record
@@ -14,12 +16,18 @@ from modules.search_research import save_research_record
 
 def render_card(record,agency,project,store,scope):
     grant=record['candidate'];oid=record['opportunity_id'];category=display_category(record)
-    timing=opportunity_timing(grant,record.get('evidence'))
+    timing=record_timing(record)
     result=record.get('shared_result');decision=record.get('decision')
     with st.container(border=True):
         st.subheader(grant.get('title') or 'Untitled opportunity')
         st.write('**'+category+'**')
+        st.caption(str(grant.get('agencyName') or grant.get('agencyCode') or 'Federal agency not supplied'))
+        money=record.get('evidence',{}).get('financials') or record.get('official_summary') or {}
+        from services.grants_api import _amount
+        floor,ceiling=_amount(money.get('award_floor')),_amount(money.get('award_ceiling'))
+        st.caption('Official award range: '+(f'${floor:,.0f}' if isinstance(floor,(float,int)) else 'floor unavailable')+' – '+(f'${ceiling:,.0f}' if isinstance(ceiling,(float,int)) else 'ceiling unavailable'))
         st.caption(f"Opportunity {oid} · {timing['status']} · Listed deadline: {timing['close_date'] or 'Not supplied'}")
+        if record.get('funding_note'):st.caption(record['funding_note'])
         if result:
             apply={'needs_review':'Applicant route needs verification','direct_route_excluded':'The reviewed direct route is excluded',
                    'direct_route_supported_subject_to_notice':'Applicant route supported, subject to the current notice'}
@@ -31,11 +39,19 @@ def render_card(record,agency,project,store,scope):
             st.write('**Can we apply?** '+apply_text)
             st.write('**Should we apply?** '+should[result['should_apply']])
             st.write('**Can we act in time?** '+timing['readiness'])
+            from services.preparation_time import preparation_estimate
+            prep=preparation_estimate(record)
+            st.write('**Application preparation:** '+prep['summary'])
+            st.caption('Confidence: '+prep['confidence']+' · '+(prep['timing'] if prep['available'] else prep['reason']))
+            if prep['available']:
+                st.caption('Assumes dedicated staff, parallel drafting/budget work and timely external responses. Not a guaranteed timeline.')
             score=decision['project_activity_score']
             st.caption('Project relevance: '+(str(score)+'/100' if score is not None else 'Not assessed')+
                        ' · Strategic relevance: '+(str(decision['strategic_score'])+'/100' if decision['strategic_score'] is not None else 'Unavailable'))
-            st.write(decision['decision_rationale'])
-            for action in result['next_actions'][:4]:st.write('• '+action)
+            st.write(decision['decision_rationale'].split('. ')[0]+'.')
+            concerns=decision.get('material_conditions',[])
+            if concerns:st.write('**Key concern:** '+concerns[0])
+            if result['next_actions']:st.write('**Next action:** '+result['next_actions'][0])
             st.caption('AI research with source checks; eligibility and claim meaning still require human review. '+
                        ('Previously researched result. ' if record.get('cache_reused') else '')+str(record.get('researched_at','')))
         else:
@@ -46,6 +62,13 @@ def render_card(record,agency,project,store,scope):
             st.write('**Next action:** Check the official notice for applicant routes, allowable activities, match and intermediate deadlines.')
         with st.expander('Official evidence, uncertainties and research details'):
             if result:
+                st.write('**Preparation estimate assumptions**')
+                for assumption in prep.get('assumptions',[]):st.caption(assumption)
+                if prep.get('controlling_deadline'):st.caption('Earliest required deadline used: '+prep['controlling_deadline'])
+                for claim in prep.get('evidence',[]):
+                    st.text(claim['quote'])
+                    source=next((s for s in record['evidence']['sources'] if s['source_id']==claim['source_id']),None)
+                    if source:st.link_button('Preparation requirement source',source['url'])
                 for condition in result['unresolved_requirements']:st.text(condition)
                 sources={s['source_id']:s for s in record.get('source_documents',record['evidence']['sources'])}
                 for dimension in record['analysis']['dimensions']:
@@ -67,9 +90,7 @@ def render_card(record,agency,project,store,scope):
                     if claim['source_id']:
                         st.text(claim['quote']);source=sources.get(claim['source_id'])
                         if source and source.get('url'):st.link_button('Decision source — '+claim['source_id'],source['url'])
-            st.json({'state':record['state'],'coverage':record.get('evidence',{}).get('coverage'),
-                     'selection_reason':record.get('selection_reason'),'researched_at':record.get('researched_at'),
-                     'reason':record.get('reason')})
+            for gap in record.get('evidence',{}).get('coverage',{}).get('gaps',[]):st.caption(gap)
         if oid.isdecimal():st.link_button('View official opportunity',f'https://www.grants.gov/search-results-detail/{oid}')
         if st.button('Save to My Grants',key='workflow_save_'+scope+'_'+oid,disabled=not oid.isdecimal()):
             save_research_record(store,agency,oid,{'title':grant.get('title'),'close_date':timing['close_date'],
@@ -81,75 +102,71 @@ def render_card(record,agency,project,store,scope):
 
 def show_one_click_search():
     st.header('Find Federal Funding');st.caption('Find fewer grants. Find the right grants. Act sooner.')
-    agency=st.selectbox('NC agency',AGENCIES+['Other NC agency'],key='search_agency')
-    if agency=='Other NC agency':agency=st.text_input('Agency name',key='search_custom_agency').strip()
-    project=st.text_area('What project are you trying to fund?',key='search_project',placeholder='Describe the work, people served and intended outcomes.').strip()
-    with st.expander('Applicant and geography (optional)'):
-        applicant=st.text_input('Applicant / lead organization',key='search_applicant_identity')
-        geography=st.text_input('Project geography',value='North Carolina',key='search_geography')
-    profile={'applicant_identity':applicant or agency,'geography':[geography] if geography else []}
+    agency=st.selectbox('NC agency',AGENCIES,key='search_agency',accept_new_options=True)
+    project=st.text_area('What project are you trying to fund?',key='search_project',placeholder='Describe the activities, beneficiaries, location and intended outcomes.').strip()
+    amount=st.number_input('Funding needed (USD)',min_value=0.,value=None,key='search_funding')
+    today=datetime.now(ZoneInfo('America/New_York')).date()
+    threshold=st.date_input('Application deadline on or after',value=today,key='search_earliest_date')
     submit=st.button('Find Matching Grants',type='primary',key='search_submit')
-    if not agency or not project:
-        if submit:st.warning('Select an agency and describe the project.')
-        return
+    profile={'applicant_identity':agency,'applicant_category':'NC state government agency (user-selected)',
+        'geography':['North Carolina'],'funding_needed_usd':amount,
+        'earliest_closing_date':threshold.isoformat() if threshold else None}
+    if not project:return
     factory=lambda grant:request_for_candidate(agency,project,grant,profile=profile)
     scope=context_key(factory({'id':'scope','title':'scope'}));statekey='workflow_'+scope
     cache=ResearchStore(os.environ.get('GRANTSCOPE_RESEARCH_CACHE','.grantscope/research_v1'))
     if submit:
+        import re
+        if len(re.findall(r'[A-Za-z]+',project))<8:
+            st.info('Please add what activities need funding, who benefits, where the work happens and the outcome you want. A few sentences are enough.');return
         progress=st.empty()
         try:
-            progress.info('Finding opportunities across several project search terms…')
+            progress.info('Discovering opportunities and checking official summaries…')
             queries=diversified_retrieval_queries({},project)
-            seeds=get_grants(queries[0] if queries else project,100)
+            try:seeds=get_grants(queries[0] if queries else project,100)
+            except Exception:seeds=[]
             discovery=discover_project(agency,project,seeds,get_grants)
-            grants=discovery['grants']
-            # Snapshot the exact original request. Changing a widget never authorizes another call.
-            st.session_state[statekey]={'grants':grants,'errors':discovery['retrieval_errors']}
-            st.session_state['workflow_last_scope']=scope
+            st.session_state[statekey]={'grants':discovery['grants'],'errors':discovery['retrieval_errors']}
             try:prior=cache.load(scope)
             except (ValueError,OSError):prior={}
-            limit=max(1,min(3,int(os.environ.get('GRANTSCOPE_INITIAL_SHORTLIST','2'))))
-            try:old=AIRecommendationCache().get(agency,project) or {}
-            except Exception:old={}
-            review=shortlist_review(grants,agency,project,old.get('records',()),limit,profile,fetch_details=get_grant_details)
-            records=initial_records(review)
-            for oid,old_record in prior.items():
-                if oid in records and old_record.get('context_key')==scope and old_record.get('protocol_hash')==protocol_hash():
-                    records[oid]={**old_record,'cache_reused':True}
-            st.session_state[statekey].update(review=review,records=records)
-            def persist(value):
-                st.session_state[statekey]['records']=value
-                cache.save(scope,value)
-                selected_ids={r['identity'][1] for r in review['queue']['selected']}
-                complete=sum(r.get('state') in {'RESEARCHED_AND_VALIDATED','RESEARCH_FAILED'} for oid,r in value.items() if oid in selected_ids)
-                progress.info(f'Reading official documents and checking funding requirements: {complete} of {len(review["queue"]["selected"])} shortlist records finished. Other candidates are retained.')
-            progress.info('Researching the initial shortlist from official documents…')
+            def persist(records):
+                st.session_state[statekey]['records']=records;cache.save(scope,records)
+                finished=sum(r.get('state') in {'RESEARCHED_AND_VALIDATED','RESEARCH_FAILED'} for r in records.values())
+                progress.info(f'Checking official requirements: {finished} research records finished. Unsuitable or unavailable leads are replaced as coverage continues…')
             provider=configured_provider(st.secrets)
-            run=run_research(review,factory,provider,budget=ResearchBudget(limit,limit*2,min(4.,limit*1.21)),previous=prior,on_update=persist)
-            st.session_state[statekey].update(records=run['records'],run=run)
-            if run['aborted']:st.warning('Research stopped safely: '+run['aborted']+'. No automatic retry was made.')
+            from services.research_priority import batch_prioritize
+            run=run_adaptive_research(discovery['grants'],agency,project,provider,profile=profile,previous=prior,
+                fetch_details=get_grant_details,on_update=persist,triage=lambda items:batch_prioritize(provider,items),
+                max_candidates=max(4,min(30,int(os.environ.get('GRANTSCOPE_MAX_RESEARCH','12')))),
+                max_calls=max(4,min(60,int(os.environ.get('GRANTSCOPE_MAX_CALLS','24')))),
+                max_usd=max(5.,min(60.,float(os.environ.get('GRANTSCOPE_MAX_USD','18')))),
+                summary_limit=max(12,min(80,int(os.environ.get('GRANTSCOPE_SUMMARY_LIMIT','48')))))
+            st.session_state[statekey].update(run)
+            if run['aborted']:st.warning('Official research stopped because the provider could not continue safely. Completed findings are retained; no automatic retry was made.')
         except Exception as exc:
-            # Never render exception bodies that might contain request headers/config.
-            if statekey in st.session_state:st.session_state[statekey]['operational_error']=type(exc).__name__
-            st.warning('Research could not finish safely. Available candidates and partial results remain below. No automatic retry was made.')
+            st.session_state.setdefault(statekey,{})['operational_error']=type(exc).__name__
+            st.warning('Official research could not finish safely. Completed findings are retained; no automatic retry was made.')
         finally:progress.empty()
     saved=st.session_state.get(statekey)
-    if not saved:
-        st.caption('Click Find Matching Grants to discover and research a bounded initial shortlist.');return
-    if not saved.get('review'):return
-    for error in saved.get('errors',[]):st.warning(error)
-    review=saved['review'];records=saved.get('records') or initial_records(review)
-    ranked=rank_results(records,review)
-    completed=sum(r.get('state')=='RESEARCHED_AND_VALIDATED' for r in ranked)
-    st.write(f'**{len(ranked)} opportunities found · {completed} researched with validated sources**')
-    failed=sum(r.get('state')=='RESEARCH_FAILED' for r in ranked)
-    if failed:st.caption(f'{failed} research records are incomplete or failed; the remaining opportunities are still preliminary, not negative eligibility findings.')
-    st.caption('Search covers up to eight diversified API queries, 25 results each, plus up to 100 seed results. It is not an exhaustive federal funding inventory. Strategic fit is unavailable without verified agency goals.')
+    if not saved:return
+    records=saved.get('records',{});review=saved.get('review')
+    if not review:return
+    useful=qualified_records(records,review,profile['earliest_closing_date'])
+    st.subheader(f'{min(5,len(useful))} qualified opportunities' if useful else 'No suitable opportunities verified yet.')
+    coverage=saved.get('coverage',{})
+    checked=coverage.get('summaries_checked',0);attempts=len(coverage.get('attempted_ids',[]))
+    st.caption(f'Official summaries checked: {checked}. Full-notice research paths reviewed: {attempts}. Discovery is bounded and is not an exhaustive funding inventory.')
+    if not useful:
+        if saved.get('aborted') or saved.get('operational_error'):st.info('Research was interrupted by an operational problem. This is not a no-match conclusion.')
+        elif coverage.get('incomplete') or coverage.get('pending'):st.info('Research coverage is incomplete. Unexamined or unresolved opportunities remain; this is not a confirmed no-match conclusion.')
+        else:st.info('The evaluated opportunity pool did not support a suitable current match for this project.')
     store=LocalGrantStore()
-    visible=ranked[:5]
-    for record in visible:render_card(record,agency,project,store,scope)
-    with st.expander('All Opportunities — including preliminary, incomplete and unsuitable leads'):
-        st.download_button('Download research audit',json.dumps(records,ensure_ascii=False,default=str),file_name='grantscope-research-audit.json',mime='application/json')
-        pages=max(1,(max(0,len(ranked)-5)+9)//10)
-        page=int(st.number_input('More opportunities page',min_value=1,max_value=pages,value=1,key='workflow_page_'+scope))
-        for record in ranked[5+(page-1)*10:5+page*10]:render_card(record,agency,project,store,scope)
+    for record in useful[:5]:render_card(record,agency,project,store,scope)
+    with st.expander('Research coverage and other leads'):
+        st.write('Some leads are preliminary, unsuitable, expired, or could not be fully researched. They are preserved for audit, not presented as recommendations.')
+        st.caption(coverage.get('stop_reason','Research did not finish'))
+        st.download_button('Download research audit',json.dumps({'records':records,'coverage':coverage},ensure_ascii=False,default=str),file_name='grantscope-research-audit.json',mime='application/json')
+        st.dataframe([{'Opportunity':oid,'Title':r['candidate'].get('title'),'Review outcome':display_category(r),
+                       'Official closing date':record_timing(r)['close_date'],
+                       'Listed status':record_timing(r)['status'],
+                       'Timing concern':'Posted listing conflicts with an expired closing date; extension not verified' if record_timing(r)['contradiction'] else ''} for oid,r in records.items()],hide_index=True)

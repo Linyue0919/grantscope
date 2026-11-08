@@ -144,3 +144,5 @@ quote from its own supplied source. Never use ellipses to join passages. An
 unresolved_requirement without a source must have an empty quote. Cite evidence
 IDs in the rationale and actions where relevant. Preserve counterevidence and
 conditions; claim references do not establish legal eligibility or entailment.'''
+
+ANALYSIS_INSTRUCTION += "\nUser funding_needed_usd is a preference, not an award fact. Compare official floors, ceilings, match and activity limits; explain partial funding or unavailable amounts. earliest_closing_date is the earliest acceptable application close, never a readiness deadline. as_of is the separate current-date reference. Report contradictions between posted status and expired deadlines. A potential partnership is not an established permitted applicant route."

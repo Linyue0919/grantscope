@@ -52,6 +52,8 @@ class ResearchInput:
     sources: Tuple[Source, ...]
     missing_documents: Tuple[str, ...]
     as_of: str
+    funding_needed_usd: Optional[float] = None
+    earliest_closing_date: Optional[str] = None
 
 
 def deep_research_packet(request):

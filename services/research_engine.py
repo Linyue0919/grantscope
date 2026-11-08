@@ -351,7 +351,8 @@ def request_for_candidate(agency,project,candidate,*,mode='project_first',profil
         tuple(profile.get('geography',())),tuple(profile.get('constraints',())),
         Opportunity(str(int(str(candidate.get('opportunity_id') or candidate.get('id')))) if str(candidate.get('opportunity_id') or candidate.get('id')).isdecimal() else str(candidate.get('opportunity_id') or candidate.get('id')),str(candidate.get('title') or 'Untitled'),
             str(candidate.get('agencyName') or candidate.get('agencyCode') or 'Unknown'),str(candidate.get('category') or 'Unknown')),
-        tuple(profile.get('goal_sources',())),('Official evidence intake pending',),datetime.now(ZoneInfo('America/New_York')).date().isoformat())
+        tuple(profile.get('goal_sources',())),('Official evidence intake pending',),datetime.now(ZoneInfo('America/New_York')).date().isoformat(),
+        profile.get('funding_needed_usd'),profile.get('earliest_closing_date'))
 
 
 def configured_provider(config):

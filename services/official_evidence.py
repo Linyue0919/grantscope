@@ -123,4 +123,6 @@ class OfficialEvidenceClient:
         gaps.append('Amendment chain and referenced policies not independently certified complete')
         return {'opportunity_id':oid,'sources':sources,'inventory':inventory,'coverage':{'primary_notice_ingested':full_notice,
             'amendments_verified':False,'gaps':gaps},'fetched_at':now,'status':data.get('ost','Unknown'),
-                'close_date':fields.get('responseDateStr') or fields.get('estApplicationResponseDateStr')}
+                'close_date':fields.get('responseDateStr') or fields.get('estApplicationResponseDateStr'),
+                'financials':{'award_floor':fields.get('awardFloor'),'award_ceiling':fields.get('awardCeiling'),
+                              'cost_sharing':fields.get('costSharing') or fields.get('costSharingOrMatchingRequirement')}}
