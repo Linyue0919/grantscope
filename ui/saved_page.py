@@ -7,7 +7,7 @@ import streamlit as st
 from ui import saved_store
 from ui.components.card import card_header_html, chips_html
 from ui.components.detail_panel import render_panel
-from ui.export_actions import google_calendar_button, grant_pdf_button, ics_button
+from ui.export_actions import google_calendar_button, grant_pdf_button, ics_button, summary_pdf_button
 from ui.nav import PAGES
 from ui.view_model import RECOMMENDATION_LABELS, agency_display_name, view_from_dict
 
@@ -112,6 +112,7 @@ def show_saved(toolbar=None, card_links=None, panel_actions=None):
     with st.container(horizontal=True, gap="small", vertical_alignment="center", key="saved_toolbar"):
         if toolbar:
             toolbar(agency, chosen)
+        summary_pdf_button(chosen, agency, key="saved_pdf", label="Download PDF", primary=True)
         skipped = ics_button(chosen, agency, key="saved_ics")
         how = st.segmented_control("Sort by", SORTS, default=SORTS[0], key="saved_sort", label_visibility="collapsed")
     notes = [f"Exports include the {len(chosen)} selected item{'s' if len(chosen) != 1 else ''}."]

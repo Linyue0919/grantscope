@@ -21,7 +21,8 @@ from ui import saved_store
 from ui.brief_sections import SECTION_DESCRIPTIONS, SECTION_RULES, SECTION_TITLES, group_views
 from ui.components.card import render_card, render_hidden, render_lower, render_soon
 from ui.components.detail_panel import render_panel
-from ui.export_actions import grant_pdf_button
+from ui.export_actions import grant_pdf_button, summary_pdf_button
+from ui.view_model import view_from_dict
 from ui.nav import PAGES
 from ui.view_model import agency_display_name, build_views, header_stats, to_eastern
 
@@ -277,7 +278,8 @@ def show_dashboard():
     with main:
         _render_header(agency, profile, result, min_days, compact=panel_view is not None)
         _render_sections(groups, panel_view.id if panel_view else None, hidden, agency)
-        _render_saved_bar(agency)
+        _render_saved_bar(agency, extra=lambda a, items: summary_pdf_button(
+            [view_from_dict(i) for i in items], a, key="savedbar_pdf"))
         _render_footer(profile)
     if side is not None:
         with side:
