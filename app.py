@@ -19,6 +19,9 @@ PAGES.update({
     "saved": st.Page(show_saved, title=f"Saved ({saved_store.count_all()})", url_path="saved"),
     "alerts": st.Page(show_profile, title="Alerts", url_path="alerts"),
     "how": st.Page(show_how_it_works, title="How it works", url_path="how-it-works"),
-    "ai_help": st.Page(show_ai_help, title="AI Help", url_path="ai-help", visibility="hidden"),
 })
+try:  # hidden pages need a newer Streamlit than 1.51; there, AI Help is simply not linked
+    PAGES["ai_help"] = st.Page(show_ai_help, title="AI Help", url_path="ai-help", visibility="hidden")
+except TypeError:
+    pass
 st.navigation(list(PAGES.values()), position="top").run()
