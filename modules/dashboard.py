@@ -9,8 +9,7 @@ from datetime import date
 
 import streamlit as st
 
-from modules.profile import get_preferences
-from services.agency_profiles import get_agency_profile, list_profiled_agencies, resolve_agency_name
+from services.agency_profiles import get_agency_profile, list_profiled_agencies
 from services.ai_eligibility import AzureEligibilityEvaluator
 from services.ai_matching import AzureFitEvaluator, load_ai_config
 from services.application_effort import find_announcement
@@ -113,8 +112,7 @@ def _refresh():
 
 def load_brief(agency, min_days):
     """Run the existing backend pipeline (cached) and build view models. No extra calls."""
-    prefs = get_preferences()
-    keywords = tuple(prefs.get("priorities", [])) if resolve_agency_name(prefs.get("agency")) == agency else ()
+    keywords = ()  # plan terms only; Browse all handles custom keywords
     use_ai = bool(_ai_config())  # backend default: AI on when configured
     result = _cached_match(agency, min_days, 0, False, keywords, use_ai, date.today().isoformat())
     profile = get_agency_profile(agency)

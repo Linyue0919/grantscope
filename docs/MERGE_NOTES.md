@@ -103,10 +103,11 @@ The Brief no longer uses `modules/grant_card.py`. Your `modules/integrated_searc
 
 The old Profile form is gone. Its settings duplicated the Brief (agency, days filter) and Search (priorities, minimum award), and the award, score and notification settings weren't applied. The page now holds the weekly digest, instant alerts, saved-grant reminders and a preview. It is session-only and sends nothing yet.
 
-**`get_preferences()` is kept** with the old keys, because three callers still read it:
+**`get_preferences()` is kept** with the old keys, because two callers still read it:
 - `modules/integrated_search.py:24` uses `prefs["agency"]` as Search's preferred agency.
 - `modules/search.py` (legacy path) reads `agency`, `priorities`, `deadline_days`, `minimum_award` and `minimum_match_score`.
-- `modules/dashboard.py:load_brief` adds `priorities` as extra keywords when the Brief agency matches. This kept DEQ results unchanged.
+
+The Brief no longer reads it. It used to add the old Profile priorities as hidden extra keywords for DEQ; now it searches with strategic-plan terms only, the same for every agency.
 
 To decide:
 - **Defaults.** When resolving the conflict, use your `DEFAULT_PREFERENCES` values in our `LEGACY_DEFAULTS`. Your agency is `"Department of Environmental Quality"`; ours still says `"NC Department of Environmental Quality"`. Both resolve to the same profile.

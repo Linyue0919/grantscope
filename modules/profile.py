@@ -212,7 +212,7 @@ def _digest_preview(agency_short, views, closing, settings):
     html = _mail_head(ad.digest_subject(agency_short, groups), to, when, off)
     html += '<div class="gs-mail-body">'
     html += _mail_group("Top candidates", groups["top"], "No top candidates this week.")
-    html += _mail_group("Newly added: needs a quick check", groups["check"], "Nothing new to check.")
+    html += _mail_group("Needs a quick check", groups["check"], "Nothing to check this week.")
     html += _mail_group(f"Closing within {ad.CLOSING_WITHIN} days", groups["closing"],
                         f"No relevant grants close within {ad.CLOSING_WITHIN} days.")
     html += ('<p class="gs-mail-foot">Scores are fit with your strategic plan (0–100). Open GrantScope for '
