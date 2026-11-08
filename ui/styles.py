@@ -122,7 +122,9 @@ a { color: var(--gs-navy); }
 .stApp .gs-drivers td.v { text-align: right; font-weight: 600; }
 .stApp .gs-pursue { background: var(--gs-bg); border-radius: 10px; padding: 12px 14px; }
 .stApp .gs-footer { font-size: 13px; color: var(--gs-muted); margin-top: 24px; border-top: 1px solid var(--gs-border); padding-top: 10px; }
-.stApp .gs-savedbar { background: #1B2230; color: #fff; border-radius: 10px; padding: 10px 16px; font-size: 14px; }
+.stApp .gs-savedbar { background: #1B2230; color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 14px; margin-top: 18px; }
+.stApp .gs-savedbar b { color: #fff; }
+.stApp .gs-savedbar-note { color: #C9D1DC; }
 /* Stacked header */
 .st-key-brief_header { margin-bottom: 12px; }
 .st-key-brief_header p { margin: 0 !important; }

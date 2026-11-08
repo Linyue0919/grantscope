@@ -217,6 +217,23 @@ def _render_sections(groups, selected_id, hidden, agency):
                     st.page_link(PAGES["browse"], label="Try Browse all for a custom search", width="content")
 
 
+def _render_saved_bar(agency, extra=None):
+    """Slim dark bar at the end of the brief when something is saved (sticky footers are fragile)."""
+    items = saved_store.list_saved(agency)
+    if not items:
+        return
+    names = ", ".join(i.get("short_name", "") for i in items[:3]) + (f" and {len(items) - 3} more" if len(items) > 3 else "")
+    with st.container(key="savedbar"):
+        st.markdown(f'<div class="gs-savedbar"><b>{len(items)} saved:</b> {names}'
+                    '<span class="gs-savedbar-note"> · Saved for this session only</span></div>',
+                    unsafe_allow_html=True)
+        with st.container(horizontal=True, gap="small"):
+            if st.button("View saved", key="savedbar_view", type="primary"):
+                st.switch_page(PAGES["saved"])
+            if extra:
+                extra(agency, items)
+
+
 def _render_footer(profile):
     st.markdown('<div class="gs-footer">', unsafe_allow_html=True)
     if "how" in PAGES:
@@ -259,6 +276,7 @@ def show_dashboard():
     with main:
         _render_header(agency, profile, result, min_days, compact=panel_view is not None)
         _render_sections(groups, panel_view.id if panel_view else None, hidden, agency)
+        _render_saved_bar(agency)
         _render_footer(profile)
     if side is not None:
         with side:

@@ -498,3 +498,13 @@ def to_eastern(iso):
         return datetime.fromisoformat(iso).astimezone(ZoneInfo("America/New_York"))
     except Exception:  # noqa: BLE001
         return None
+
+
+def view_from_dict(data):
+    """Rebuild an OpportunityView from a saved snapshot (ignores extra keys such as saved_at)."""
+    names = {f.name for f in OpportunityView.__dataclass_fields__.values()}
+    kwargs = {k: v for k, v in data.items() if k in names}
+    for key in ("deadline_date", "rolling_until"):
+        if isinstance(kwargs.get(key), str):
+            kwargs[key] = _parse_iso(kwargs[key])
+    return OpportunityView(**kwargs)
