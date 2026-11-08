@@ -447,3 +447,32 @@ def test_forecast_and_unverified_lists_do_not_rescue_population_mismatch():
     assert all(any('incarcerated or reentry' in reason
                    for reason in row['project_screening_reasons'])
                for row in result['all_records'])
+
+
+def test_search_ai_shortlist_prioritizes_project_activity_over_agency_keywords():
+    project=('Restore watershed vegetation and monitor water quality to reduce '
+             'nutrient runoff in North Carolina communities.')
+    hits=[
+        {'id':'700001','title':'General Environmental Policy Planning',
+         'oppStatus':'posted','closeDate':'12/01/2027'},
+        {'id':'700002','title':'Watershed Restoration and Water Quality Monitoring',
+         'oppStatus':'posted','closeDate':'12/01/2027'},
+    ]
+    class Fit:
+        calls=[]
+        def __init__(self,config):pass
+        def __call__(self,record,profile,detail):
+            self.calls.append(record['id'])
+            return {'status':'unavailable','errors':['Synthetic no model call']}
+    def official(oid):
+        return details(desc=('Agency strategic environmental planning and regulatory compliance.'
+                             if oid=='700001' else
+                             'Restore watersheds and monitor water quality to reduce nutrient runoff.'))
+    with patch('services.integration_search.load_ai_config',return_value={'deployment':'test'}),\
+         patch('services.integration_search.AzureFitEvaluator',Fit),\
+         patch('services.integration_search.AzureEligibilityEvaluator',return_value=None):
+        result=search_potential_matches('Department of Environmental Quality',project,
+            search_fn=lambda *args:hits,details_fn=official,today=date(2026,11,8),
+            enable_ai=True,ai_limit=1)
+    assert Fit.calls == ['700002']
+    assert result['foundation']['ai']['evaluated']==1
