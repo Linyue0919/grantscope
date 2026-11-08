@@ -207,6 +207,15 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         if record['eligibility']['status'] == INELIGIBLE:
             continue
         reasons=record.get('project_screening_reasons', [])
+        # An unresolved date must not rescue a candidate with an independent
+        # project-scope, population, geography or applicant mismatch.
+        status_reasons={
+            'Not verified as currently open with a closing date',
+            'Closing date is before the selected threshold',
+        }
+        independent_reasons=[reason for reason in reasons if reason not in status_reasons]
+        if independent_reasons:
+            continue
         if record['deadline']['status'] == 'forecasted' and record.get('project_fit', {}).get('supported_for_screening'):
             record['forecast_reasons']=reasons
             forecasted.append(record)
