@@ -63,6 +63,7 @@ class MatchSettings:
     detail_limit: int = 60                 # official detail lookups per run
     ai_limit: int = 12                     # AI fit assessments per run (when configured)
     ai_eligibility_limit: int = 15         # AI eligibility interpretations per run (when configured)
+    include_unknown_ai: bool = False       # allow evidence-loaded unknown-status records into AI fit review
     max_workers: int = 6
 
 
@@ -524,6 +525,8 @@ def run_matching(profile, settings=None, *, search_fn, details_fn, today=None, e
         # Interpret eligibility where rules are not conclusive. Confirmed restrictions and
         # grants screened out for other reasons are never sent to the model.
         open_sections = (PRIORITY, UPCOMING, LIKELY_INELIGIBLE_SECTION)
+        if settings.include_unknown_ai:
+            open_sections += (LOW_EVIDENCE,)
         candidates_for_elig = [r for r in records.values()
                                if r["section"] in open_sections and r["details_loaded"]
                                and r["eligibility"]["status"] in (NEEDS_REVIEW, LIKELY_ELIGIBLE, LIKELY_INELIGIBLE)]
@@ -531,7 +534,13 @@ def run_matching(profile, settings=None, *, search_fn, details_fn, today=None, e
         elig_summary = run_ai(eligibility_evaluator, chosen, ai_elig)
     if profile and ai_evaluator is not None:
         # Top keyword matches plus a few zero-keyword candidates with official text (false-negative check).
-        open_records = [r for r in records.values() if r["section"] in (PRIORITY, UPCOMING)]
+        eligible_sections = (PRIORITY, UPCOMING)
+        if settings.include_unknown_ai:
+            eligible_sections += (LOW_EVIDENCE,)
+        open_records = [
+            r for r in records.values()
+            if r["section"] in eligible_sections and r["details_loaded"]
+        ]
         rescue = [r for r in records.values() if r["section"] == LOW_EVIDENCE and r["details_loaded"]]
         rescue_n = min(4, settings.ai_limit // 3)
         chosen = rank_results(open_records)[:settings.ai_limit - rescue_n] + rescue[:rescue_n]

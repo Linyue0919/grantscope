@@ -92,6 +92,97 @@ def test_search_ai_failure_keeps_evidence_and_does_not_invent_fit():
     assert assessed["effort"]["level"] in {"unknown", "insufficient", "unclear", "fewer_found", "moderate", "higher"}
 
 
+def test_unknown_status_project_match_is_ai_assessed_and_needs_verification():
+    project = "Expand rural mental health services and school-based telehealth clinics for students in North Carolina."
+    hits = [{"id": "363687", "title": "Rural Mental Health School Support", "oppStatus": "posted"}]
+    official = details(desc="Mental health services and telehealth clinics for rural schools and students.")
+
+    class Fit:
+        def __init__(self, config):
+            self.calls = []
+        def __call__(self, record, profile, details):
+            self.calls.append(record["id"])
+            return {"status": "ok", "score": 84,
+                    "explanation": "Official mental health services evidence supports the project.",
+                    "goal_ids": [], "evidence": [{"source_id": "D", "quote": details["description"]}]}
+
+    class Eligibility:
+        def __init__(self, config):
+            self.calls = []
+        def __call__(self, record, profile, details):
+            self.calls.append(record["id"])
+            return {"status": "ok", "verdict": "needs_review",
+                    "reasoning": "Applicant route requires official notice verification.",
+                    "quote": "", "to_verify": ["Applicant type"]}
+
+    with patch("services.integration_search.AzureFitEvaluator", Fit), \
+         patch("services.integration_search.AzureEligibilityEvaluator", Eligibility):
+        result = search_potential_matches(
+            "Department of Environmental Quality", project,
+            search_fn=lambda *args: hits, details_fn=lambda oid: official,
+            today=date(2026, 11, 8),
+            ai_config={"AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
+                       "AZURE_OPENAI_API_KEY": "test"},
+            enable_ai=True,
+        )
+
+    assert not result["potentials"]
+    assert [record["id"] for record in result["needs_verification"]] == ["363687"]
+    record = result["needs_verification"][0]
+    assert record["deadline"]["status"] == "unknown"
+    assert record["relevance"]["ai"]["status"] == "ok"
+    assert record["relevance"]["ai"]["score"] == 84
+
+
+def test_confirmed_ineligible_unknown_status_is_not_needs_verification():
+    project = "Expand rural mental health services and school-based telehealth clinics for students in North Carolina."
+    hit = {"id": "363580", "title": "Rural Mental Health School Support", "oppStatus": "posted"}
+    official = details(
+        types=(("06", "Public universities"),),
+        text="Eligible applicants are federally recognized Tribes and intertribal consortia.",
+        desc="Mental health services and telehealth clinics for rural schools and students.",
+    )
+    result = search_potential_matches(
+        "Department of Environmental Quality", project,
+        search_fn=lambda *args: [hit], details_fn=lambda oid: official,
+        today=date(2026, 11, 8),
+    )
+    assert not result["needs_verification"]
+
+
+def test_needs_verification_is_visible_separately_from_open_potential_matches():
+    project = "Expand rural mental health services and school-based telehealth clinics for students in North Carolina."
+    result = {
+        "potentials": [],
+        "needs_verification": [{
+            "id": "363687",
+            "title": "Rural Mental Health School Support",
+            "federal_agency": "Federal agency",
+            "project_fit": {"matches": [{"activity": "mental/behavioral health"}]},
+            "verification_reasons": ["Not verified as currently open with a closing date"],
+            "relevance": {"ai": {"status": "ok", "score": 84}},
+        }],
+        "all_records": [],
+        "details": {},
+        "foundation": {"stats": {"unique_candidates": 1, "details_loaded": 1},
+                       "errors": []},
+    }
+    with patch("modules.integrated_search.search_potential_matches", return_value=result):
+        at = AppTest.from_string(
+            "from modules.integrated_search import show_search_screening\n"
+            "show_search_screening()"
+        ).run()
+        at.text_area(key="search_project").input(project)
+        at.button(key="search_submit").click().run()
+    assert not at.exception
+    rendered = "\n".join(
+        item.value for item in (*at.markdown, *at.caption)
+        if isinstance(item.value, str)
+    )
+    assert any(expander.label == "Needs Verification (1)" for expander in at.expander)
+    assert "does not confirm open status or eligibility" in rendered
+
+
 def test_search_cards_render_shared_dashboard_assessment_fields():
     result = screen()
     lead = result["potentials"][0]

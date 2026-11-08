@@ -44,9 +44,9 @@ def show_search_screening():
                 st.error('Official opportunity screening could not finish. No matches are being invented.');return
     result=st.session_state.get(key)
     if not result:return
-    potentials=result['potentials'];store=LocalGrantStore()
+    potentials=result['potentials'];needs_verification=result.get('needs_verification',[]);store=LocalGrantStore()
     st.subheader('Potential Matches')
-    st.caption('Project-specific screening leads from official summaries — not verified recommendations. Full notice, applicant conditions and preparation requirements remain to be researched. Screening makes no AI calls; Deep Research uses paid Azure AI.')
+    st.caption('Project-specific results use the shared Dashboard assessment pipeline, including bounded GPT-4o fit review, official eligibility checks, citation validation, and Application Effort analysis. Results are not legal eligibility determinations.')
     if not potentials:st.info('No sufficiently relevant, open potential matches passed screening. This is a bounded search, not proof that no funding exists.')
     deep=st.session_state.setdefault(key+'_deep',{})
     cache=ResearchStore(os.environ.get('GRANTSCOPE_RESEARCH_CACHE'))
@@ -138,6 +138,20 @@ def show_search_screening():
                     'project_description':project,'research_depth':'official-summary screening only',
                     'viability_state':'INSUFFICIENT_EVIDENCE','notes':'Potential Match, not fully researched. Original project: '+project+'. Verify applicant, purpose, geography, match and readiness.'})
                 st.success('Saved as an unverified potential match with project context.')
+    if needs_verification:
+        with st.expander(f'Needs Verification ({len(needs_verification)})'):
+            st.caption('These records have project evidence, but current open status, deadline, or another official field could not be verified. They are not confirmed open or eligible.')
+            for record in needs_verification[:10]:
+                st.write(f"**{record['title']}** · Opportunity {record['id']}")
+                st.caption('Project evidence: ' + ', '.join(
+                    match['activity'] for match in record['project_fit'].get('matches', [])
+                ))
+                st.caption('Verification gap: ' + '; '.join(record.get('verification_reasons', [])))
+                ai_fit=record.get('relevance', {}).get('ai') or {}
+                if ai_fit.get('status') == 'ok':
+                    st.caption(f"Shared GPT-4o project assessment: {ai_fit.get('score')}/100; this does not confirm open status or eligibility.")
+                st.link_button('Review official opportunity',
+                               f"https://www.grants.gov/search-results-detail/{record['id']}")
     with st.expander('Coverage, other candidates and exclusions'):
         foundation=result['foundation'];stats=foundation['stats']
         st.caption(f"{stats['unique_candidates']} unique opportunities retrieved; {stats['details_loaded']} official details checked. Up to eight queries and 100 results per query; coverage is not exhaustive.")

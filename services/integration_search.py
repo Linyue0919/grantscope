@@ -1,7 +1,7 @@
-"""Project-first screening on Dashboard's shared matching/evidence foundation.
+"""Project-first Search on Dashboard's shared matching/evidence foundation.
 
-Potential Matches are transparent deterministic screening leads, never Sol-verified.
-No paid provider is created by retrieval, screening or ranking.
+Search retains a conservative Needs Verification state for project-relevant
+records whose official status or deadline is unresolved.
 """
 import re
 from datetime import date
@@ -98,7 +98,7 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
     eligibility_ai=AzureEligibilityEvaluator(config) if config else None
     result=run_matching(profile,MatchSettings(min_days_left=None,min_award=None,
         include_unknown_deadline=True,detail_limit=detail_limit,max_queries=8,
-        ai_limit=ai_limit,ai_eligibility_limit=ai_limit),
+        ai_limit=ai_limit,ai_eligibility_limit=ai_limit,include_unknown_ai=enable_ai),
         search_fn=search_fn,details_fn=details_fn,today=today,extra_keywords=queries,details_cache=details,
         candidate_ranker=lambda h:project_activity_fit(project,h.get('title',''),h.get('description',''))['rank'],
         prefer_official_deadlines=True,ai_evaluator=fit_ai,
@@ -175,7 +175,27 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         if not reasons:potentials.append(record)
     potentials.sort(key=lambda r:(-r['project_fit']['rank'],r['eligibility']['status']!='likely_eligible',
                                   bool(r['funding_preference_note']),r['deadline']['close_date'],r['id']))
-    return {'potentials':potentials,'all_records':all_records,'details':details,'foundation':result,
+    needs_verification=[]
+    for record in all_records:
+        if record in potentials or not record.get('details_loaded'):
+            continue
+        if record['eligibility']['status'] == INELIGIBLE:
+            continue
+        reasons=record.get('project_screening_reasons', [])
+        verification_gap=any(
+            phrase in reason for reason in reasons
+            for phrase in (
+                'Not verified as currently open',
+                'Posted, but no closing date',
+                'Official details retrieval failed',
+            )
+        )
+        if record.get('project_fit', {}).get('supported_for_screening') and verification_gap:
+            record['verification_reasons']=reasons
+            needs_verification.append(record)
+    needs_verification.sort(key=lambda r:(-r['project_fit']['rank'],r['id']))
+    return {'potentials':potentials,'needs_verification':needs_verification,
+            'all_records':all_records,'details':details,'foundation':result,
             'agency':agency,'project':project,'amount':amount,'earliest':str(earliest) if earliest else None,
             'screening_only':True,'notice_screening_checks':notice_checks}
 
