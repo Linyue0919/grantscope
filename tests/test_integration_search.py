@@ -288,3 +288,33 @@ def test_prison_population_is_not_excluded_when_explicitly_in_project():
             desc='Provide substance use treatment for state prisoners in jails.'))
     assert not any('incarcerated or reentry' in reason
                    for reason in result['all_records'][0]['project_screening_reasons'])
+
+
+def test_search_ai_shortlist_prefers_project_specific_official_description():
+    project='Restore watershed vegetation and monitor water quality to reduce nutrient runoff.'
+    hits=[
+        {'id':'700001','title':'General Environmental Policy Planning','oppStatus':'posted','closeDate':'12/01/2027'},
+        {'id':'700002','title':'Watershed Restoration and Water Quality Monitoring','oppStatus':'posted','closeDate':'12/01/2027'},
+    ]
+    descriptions={
+        '700001':'General environmental policy planning and regulatory compliance.',
+        '700002':'Restore watersheds and monitor water quality to reduce nutrient runoff.',
+    }
+    class Fit:
+        calls=[]
+        def __init__(self,config):pass
+        def __call__(self,record,profile,detail):
+            self.calls.append(record['id'])
+            return {'status':'unavailable'}
+    Fit.calls=[]
+    with patch('services.integration_search.load_ai_config',return_value={'deployment':'test'}),\
+         patch('services.integration_search.AzureFitEvaluator',Fit),\
+         patch('services.integration_search.AzureEligibilityEvaluator',return_value=None):
+        result=search_potential_matches(
+            'Department of Environmental Quality',project,
+            search_fn=lambda *args:hits,
+            details_fn=lambda oid:details(types=(('00','State governments'),),
+                                          desc=descriptions[oid]),
+            today=date(2026,11,8),enable_ai=True,ai_limit=1)
+    assert Fit.calls==['700002']
+    assert result['foundation']['ai']['evaluated']==1
