@@ -83,9 +83,11 @@ def test_full_search_pipeline_and_rendering():
              patch('modules.my_grants.LocalGrantStore', return_value=store):
             app = AppTest.from_file('app.py').run()
             app.radio[0].set_value('Search').run()
+            app.checkbox(key='search_foundation_enabled').uncheck().run()
+            app.checkbox(key='search_allow_new_ai').check().run()
             app.selectbox(key='search_agency').select(AGENCY)
             app.text_area[0].input(PROJECT)
-            app.button[0].click().run()
+            app.button(key='search_submit').click().run()
             assert not app.exception
             titles = [item.value for item in app.subheader]
             assert 'Cyber training' in titles
@@ -99,6 +101,8 @@ def test_full_search_pipeline_and_rendering():
             assert not app.exception
             assert 'Cyber training' in [item.value for item in app.subheader]
             app.radio[0].set_value('Search').run()
+            app.checkbox(key='search_foundation_enabled').uncheck().run()
+            app.checkbox(key='search_allow_new_ai').check().run()
             app.selectbox(key='search_agency').select(AGENCY)
             app.text_area[0].input(PROJECT).run()
             before = len(calls)

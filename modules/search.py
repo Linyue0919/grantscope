@@ -9,6 +9,8 @@ from services.agency_directory import AGENCIES
 from services.matching import project_relevance, rank_grants
 from services.eligibility import screen_eligibility
 from services.verified_goals import VERIFIED_GOALS
+from services.search_foundation import discover_project
+from modules.search_research import render_demo, render_project_review
 
 
 def partition_recommendation_results(grants, classifications):
@@ -275,12 +277,22 @@ def _format_amount(value):
 def show_search():
     st.header("Find Federal Funding")
     st.caption("Find fewer grants. Find the right grants. Act sooner.")
+    foundation = st.checkbox("Evidence-first research", value=True, key="search_foundation_enabled")
     store = LocalGrantStore()
+    if st.checkbox("Show optional recorded research example",value=False,key="search_show_example"):
+        render_demo(store)
+    if not foundation:
+        st.caption("Fallback Search: legacy relevance scores and filters. Legacy Recommended labels do not certify application viability. Paid GPT-4o evaluation is disabled unless explicitly enabled below.")
+    allow_new_ai = False if foundation else st.checkbox("Enable paid GPT-4o evaluation on Search / Analyze More", value=False, key="search_allow_new_ai")
     saved_records = {
         f"{record['agency']}::{record['opportunity_id']}": record
         for record in store.list_records()
     }
-    agency = st.selectbox("Agency to evaluate", AGENCIES, key="search_agency")
+    agency = st.selectbox("Agency to evaluate", AGENCIES+["Other NC agency / enter profile"], key="search_agency")
+    if agency == "Other NC agency / enter profile":
+        agency = st.text_input("NC agency name",key="search_custom_agency").strip()
+        if not agency:
+            st.info("Enter the NC agency name to begin."); return
     st.caption("Strategic goals are used only when officially verified.")
     query = st.text_input(
         "Keywords (optional)",
@@ -295,6 +307,14 @@ def show_search():
     # Keywords alone still define a project-specific research namespace.
     project_description = project_description.strip() or query.strip()
     with st.expander("Advanced filters", expanded=False):
+        mission = st.text_area("Agency mission / profile context (optional; not verified strategy)",key="search_agency_mission")
+        applicant = st.text_input("Applicant identity (optional)",key="search_applicant_identity")
+        geography = st.text_input("Project geography (optional)",key="search_geography")
+        constraints = st.text_input("Known constraints / match / partners (optional)",key="search_constraints")
+        agency_profile = {"mission":mission,"applicant_identity":applicant or agency,
+            "geography":(geography,) if geography else (),"constraints":(constraints,) if constraints else ()}
+        if foundation:
+            st.caption("Evidence-first review retains the full pool. Only research queue size below applies here; score, deadline and other filters apply to the fallback view.")
         limit_deadline = st.checkbox("Limit to a closing-date window", value=False)
         deadline_days = st.number_input(
             "Closing within (days)", min_value=1, max_value=365,
@@ -320,11 +340,11 @@ def show_search():
             key="search_include_uncertain_eligibility",
         )
         research_depth = st.selectbox(
-            "AI Research Depth",
+            "Research queue size" if foundation else "AI Research Depth",
             ["Quick", "Balanced", "Deep", "Custom"],
             index=1,
             key="search_research_depth",
-            help="Maximum number of new Azure evaluations for an explicit search or Analyze More action.",
+            help="Planning budget only; not completed research." if foundation else "Maximum number of new Azure evaluations for an explicit search or Analyze More action.",
         )
         custom_depth = 30
         if research_depth == "Custom":
@@ -340,7 +360,7 @@ def show_search():
     eligibility_filter = "Any eligibility"
     exclude_confirmed_ineligible = True
 
-    if st.button("Find Matching Grants", type="primary"):
+    if st.button("Find Matching Grants", type="primary", key="search_submit"):
         retrieval_query = query.strip() or project_description.strip()
         if not retrieval_query:
             st.warning("Describe a project or add keywords to begin.")
@@ -349,6 +369,11 @@ def show_search():
         try:
             with st.spinner("Searching Grants.gov..."):
                 grants = get_grants(retrieval_query, 100)
+                if foundation:
+                    discovery = discover_project(agency, project_description, grants, get_grants)
+                    grants = discovery["grants"]
+                    for message in discovery["retrieval_errors"]:
+                        st.warning(message)
         except GrantsAPIError as exc:
             st.error(str(exc))
             return
@@ -356,20 +381,21 @@ def show_search():
             "query": retrieval_query, "grants": grants,
             "agency": agency, "project": project_description.strip(),
         }
-        try:
-            with st.spinner(f"Analyzing up to {research_limit} new opportunities with AI..."):
-                research_result = prepare_ai_recommendations(
-                    agency,
-                    project_description=project_description,
-                    cache=AIRecommendationCache(),
-                    config=st.secrets,
-                    seed_grants=grants,
-                    max_new_evaluations=research_limit,
-                    batch_size=5,
-                )
-                st.session_state["search_research_summary"] = research_result.get("summary", {})
-        except DiscoveryError as exc:
-            st.warning(f"AI evaluation was not completed: {exc}")
+        if allow_new_ai:
+            try:
+                with st.spinner(f"Analyzing up to {research_limit} new opportunities with AI..."):
+                    research_result = prepare_ai_recommendations(
+                        agency,
+                        project_description=project_description,
+                        cache=AIRecommendationCache(),
+                        config=st.secrets,
+                        seed_grants=grants,
+                        max_new_evaluations=research_limit,
+                        batch_size=5,
+                    )
+                    st.session_state["search_research_summary"] = research_result.get("summary", {})
+            except DiscoveryError as exc:
+                st.warning(f"AI evaluation was not completed: {exc}")
 
     cached = st.session_state.get("search_last_results")
     if not cached:
@@ -391,6 +417,12 @@ def show_search():
         if record.get("opportunity_id")
     }
     grants = merge_cached_opportunities(grants, cached_records)
+    if foundation:
+        try:
+            render_project_review(grants, agency, project_description, cached_records, research_limit, store, agency_profile=agency_profile)
+            return
+        except (ValueError, KeyError, OSError):
+            st.warning('Evidence-first review could not be completed. Showing cached fallback results; no new AI calls were enabled.')
     if st.session_state.get("search_research_depth"):
         stored_summary = st.session_state.get("search_research_summary", {})
         if stored_summary:
@@ -400,7 +432,7 @@ def show_search():
                 f"{stored_summary.get('failed', 0)} failed; "
                 f"{stored_summary.get('skipped_ineligible', 0)} skipped after official eligibility screening."
             )
-    if st.button("Analyze More", key="search_analyze_more"):
+    if st.button("Analyze More", key="search_analyze_more", disabled=not allow_new_ai):
         try:
             with st.spinner(f"Analyzing up to {research_limit} new opportunities with AI..."):
                 research_result = prepare_ai_recommendations(
