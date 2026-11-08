@@ -8,7 +8,7 @@ match the backend's levels (Strong / Moderate / Low).
 SECTION_RULES = {
     "strong_min": 60,      # backend "strong" level
     "moderate_min": 30,    # backend "moderate" level; below this is Low
-    "top_min_fit": 30,     # Top requires at least a Moderate fit (approved "middle" rule)
+    "top_min_fit": 30,     # Moderate fits reach Top only with a stated award; Strong fits don't need one
     "top_cap": 5,          # Top shows at most this many before "Show N more"
     "lower_cap": 15,       # Lower priority shows at most this many rows
 }
@@ -20,8 +20,8 @@ SECTION_TITLES = {
     "lower": "Lower priority",
 }
 SECTION_DESCRIPTIONS = {
-    "top": ("Good fit with your plan, state governments listed as eligible applicants, deadline and award stated. "
-            "Sorted by fit score."),
+    "top": ("Strong fit with your plan (or a good fit with a stated award), state governments listed as eligible "
+            "applicants, and a known deadline. Sorted by fit score."),
     "check": ("Good fit, but something important isn't confirmed yet, so the score alone isn't enough. "
               "Each one names exactly what to check."),
     "soon": "Forecasted opportunities that aren't accepting applications yet.",
@@ -49,10 +49,12 @@ def assign_section(view):
             or view.known_blocker):
         return "lower"
     if (view.eligibility_restricted or not view.eligibility_positive or view.region_flags
-            or view.deadline_date is None or view.award_status != "Confirmed"):
+            or view.deadline_date is None):
         return "check"
-    if view.fit_score >= SECTION_RULES["top_min_fit"]:
-        return "top"
+    if view.fit_score >= SECTION_RULES["strong_min"]:
+        return "top"  # Strong fit: an unstated award is shown as "Not stated", not a reason to hold back
+    if view.fit_score >= SECTION_RULES["top_min_fit"] and view.award_status == "Confirmed":
+        return "top"  # Moderate fit needs a stated award
     return "check"
 
 

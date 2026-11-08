@@ -127,7 +127,8 @@ def render_panel(view, *, on_close, saved=None, on_toggle_save=None, extra_actio
                 f"**Strategic plan:** {escape(view.plan_name or 'Agency')} strategic plan"
                 + (f", p. {view.plan_page}" if view.plan_page else ""))
             if how_it_works_page is not None:
-                st.page_link(how_it_works_page, label="How GrantScope assesses opportunities")
+                with st.container(key="inlinelink_panel_how"):
+                    st.page_link(how_it_works_page, label="How GrantScope assesses opportunities", width="content")
 
         # 6. If you decide to pursue
         if view.section in ("top", "check") and view.next_steps:

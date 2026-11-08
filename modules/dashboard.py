@@ -122,45 +122,46 @@ def load_brief(agency, min_days):
 
 # --------------------------------------------------------------------------- header
 
-def _render_header(agency, profile, result, min_days_key):
-    st.markdown('<p class="gs-eyebrow">Funding brief</p>', unsafe_allow_html=True)
-    h1, switch = st.columns([5, 1.4], vertical_alignment="center")
-    h1.markdown(f'<p class="gs-h1">{agency_display_name(agency)}</p>', unsafe_allow_html=True)
-    with switch.popover("Change agency"):
-        st.markdown('<p class="gs-eyebrow">Switch to</p>', unsafe_allow_html=True)
-        for name in list_profiled_agencies():
-            label = agency_display_name(name) + ("  ·  Current" if name == agency else "")
-            st.button(label, key=f"agency_{name}", on_click=_set_agency, args=(name,), type="tertiary",
-                      disabled=name == agency, width="stretch")
-
-    plan = (f'<a href="{profile["plan_url"]}" target="_blank" rel="noopener">public strategic plan ↗</a>'
-            if profile and profile.get("plan_url") else "public strategic plan")
-    s1, s2, s3 = st.columns([5.6, 0.8, 1.4], vertical_alignment="center", gap="small")
-    s1.markdown(f'<p class="gs-scope">Open federal opportunities matched to your agency\'s {plan}, '
-                f'with at least</p>', unsafe_allow_html=True)
-    s2.number_input("Minimum days left to apply", min_value=0, max_value=365, step=1, key=min_days_key,
-                    label_visibility="collapsed")
-    s3.markdown('<p class="gs-scope">days to apply.</p>', unsafe_allow_html=True)
-
-
-def _render_header_meta(result, min_days):
+def _render_header(agency, profile, result, min_days, compact):
+    """Stacked header, one idea per row (eyebrow, agency, scope, filter, note, custom search, meta)."""
     stats = header_stats(result, min_days)
-    when = to_eastern(stats["generated_at"]) if stats["generated_at"] else None
-    when_text = f"Updated today, {when:%-I:%M %p} ET" if when else "Updated recently"
-    if stats["not_shown"]:
-        n = stats["not_shown"]
-        st.markdown(f'<p class="gs-small">{n} opportunit{"ies have" if n != 1 else "y has"} fewer than '
-                    f'{min_days} days left and {"are" if n != 1 else "is"} not shown.</p>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([2.4, 2.4, 1.3], vertical_alignment="center", gap="small")
-    with c1:
-        st.markdown('<p class="gs-small" style="margin:0">Looking for a specific program or requirement?</p>',
+    with st.container(key="brief_header", gap="small"):
+        st.markdown('<p class="gs-eyebrow">Funding brief</p>', unsafe_allow_html=True)
+        with st.container(horizontal=True, gap="small", vertical_alignment="center", key="brief_agency_row"):
+            st.markdown(f'<p class="gs-h1{" gs-h1-compact" if compact else ""}">{agency_display_name(agency)}</p>',
+                        unsafe_allow_html=True, width="content")
+            with st.popover("Change agency", width="content"):
+                st.markdown('<p class="gs-eyebrow">Switch to</p>', unsafe_allow_html=True)
+                for name in list_profiled_agencies():
+                    label = agency_display_name(name) + ("  ·  Current" if name == agency else "")
+                    st.button(label, key=f"agency_{name}", on_click=_set_agency, args=(name,), type="tertiary",
+                              disabled=name == agency, width="stretch")
+        plan = (f'<a href="{profile["plan_url"]}" target="_blank" rel="noopener">public strategic plan ↗</a>'
+                if profile and profile.get("plan_url") else "public strategic plan")
+        st.markdown(f'<p class="gs-scope">Open federal opportunities matched to your agency\'s {plan}.</p>',
                     unsafe_allow_html=True)
-        if "browse" in PAGES:
-            st.page_link(PAGES["browse"], label="Try a custom search in Browse all")
-    c2.markdown(f'<p class="gs-small gs-right" style="margin:0">{when_text}<br>{stats["reviewed"]} open '
-                f'opportunities from <a href="https://www.grants.gov/" target="_blank" rel="noopener">Grants.gov</a> '
-                f'reviewed</p>', unsafe_allow_html=True)
-    c3.button("⟳ Refresh data", key="brief_refresh", on_click=_refresh)
+        with st.container(horizontal=True, gap="small", vertical_alignment="center", key="brief_filter_row"):
+            st.markdown('<p class="gs-scope">Show opportunities with at least</p>', unsafe_allow_html=True,
+                        width="content")
+            st.number_input("Minimum days left to apply", min_value=0, max_value=365, step=1, key="brief_days",
+                            label_visibility="collapsed", width=110)
+            st.markdown('<p class="gs-scope">days left to apply</p>', unsafe_allow_html=True, width="content")
+        if stats["not_shown"]:
+            n = stats["not_shown"]
+            st.markdown(f'<p class="gs-small">{n} opportunit{"ies have" if n != 1 else "y has"} fewer than '
+                        f'{min_days} days left and {"are" if n != 1 else "is"} not shown.</p>', unsafe_allow_html=True)
+        with st.container(horizontal=True, gap="small", vertical_alignment="center", key="inlinelink_browse"):
+            st.markdown('<p class="gs-scope">Looking for a specific program or requirement?</p>',
+                        unsafe_allow_html=True, width="content")
+            if "browse" in PAGES:
+                st.page_link(PAGES["browse"], label="Try a custom search in Browse all", width="content")
+        when = to_eastern(stats["generated_at"]) if stats["generated_at"] else None
+        when_text = f"Updated today, {when:%-I:%M %p} ET" if when else "Updated recently"
+        with st.container(horizontal=True, gap="small", vertical_alignment="center", key="brief_meta_row"):
+            st.markdown(f'<p class="gs-small">{when_text} · {stats["reviewed"]} open opportunities from '
+                        f'<a href="https://www.grants.gov/" target="_blank" rel="noopener">Grants.gov</a> reviewed</p>',
+                        unsafe_allow_html=True, width="content")
+            st.button("⟳ Refresh data", key="brief_refresh", on_click=_refresh, type="tertiary")
 
 
 # --------------------------------------------------------------------------- sections
@@ -212,13 +213,15 @@ def _render_sections(groups, selected_id, hidden, agency):
         if len(lower) > cap:
             st.markdown(f'<p class="gs-small">and {len(lower) - cap} more.</p>', unsafe_allow_html=True)
             if "browse" in PAGES:
-                st.page_link(PAGES["browse"], label="Try Browse all for a custom search")
+                with st.container(key="inlinelink_lower_browse"):
+                    st.page_link(PAGES["browse"], label="Try Browse all for a custom search", width="content")
 
 
 def _render_footer(profile):
     st.markdown('<div class="gs-footer">', unsafe_allow_html=True)
     if "how" in PAGES:
-        st.page_link(PAGES["how"], label="How GrantScope assesses opportunities")
+        with st.container(key="inlinelink_footer_how"):
+            st.page_link(PAGES["how"], label="How GrantScope assesses opportunities", width="content")
     st.markdown(f'<p class="gs-small">Sources: Grants.gov listings and announcements, '
                 f'{profile["short_name"] if profile else "agency"} Strategic Plan · '
                 'GrantScope never guarantees eligibility or awards.</p></div>', unsafe_allow_html=True)
@@ -250,12 +253,11 @@ def show_dashboard():
     panel_view = visible.get(selected) if selected != CLOSED else None
 
     if panel_view:
-        main, side = st.columns([3, 2], gap="large")
+        main, side = st.columns([5, 3], gap="large")
     else:
         main, side = st.container(), None
     with main:
-        _render_header(agency, profile, result, "brief_days")
-        _render_header_meta(result, min_days)
+        _render_header(agency, profile, result, min_days, compact=panel_view is not None)
         _render_sections(groups, panel_view.id if panel_view else None, hidden, agency)
         _render_footer(profile)
     if side is not None:

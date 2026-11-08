@@ -369,7 +369,9 @@ def _recommendation(v):
                   if v.days_left is not None and v.days_left <= 60 else
                   f"There is time to plan: the deadline is {v.days_left} days away." if v.days_left is not None
                   else "")
-        return f"{v.fit_tier} fit with {goal} and no blockers found in the listing. {timing}".strip()
+        award = " The award amount isn't stated in the listing; ask the program officer." \
+            if v.award_status == NOT_STATED else ""
+        return f"{v.fit_tier} fit with {goal} and no blockers found in the listing. {timing}{award}".strip()
     if v.section == "check":
         return f"{v.fit_tier} fit with {goal}, but one thing isn't confirmed yet: {v.unclear_reason} Check that first."
     if v.section == "soon":

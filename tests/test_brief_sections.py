@@ -34,7 +34,21 @@ class FitTierTests(unittest.TestCase):
 class AssignSectionTests(unittest.TestCase):
     def test_top_requires_all_conditions(self):
         self.assertEqual(assign_section(view()), "top")
-        self.assertEqual(assign_section(view(fit_score=30)), "top")  # Moderate allowed (approved middle rule)
+        self.assertEqual(assign_section(view(fit_score=30)), "top")  # Moderate allowed with a stated award
+
+    def test_strong_fit_reaches_top_without_award(self):
+        self.assertEqual(assign_section(view(fit_score=82, award_status=NOT_STATED)), "top")
+        self.assertEqual(assign_section(view(fit_score=60, award_status=NOT_STATED)), "top")
+
+    def test_moderate_fit_without_award_needs_check(self):
+        self.assertEqual(assign_section(view(fit_score=59, award_status=NOT_STATED)), "check")
+        self.assertEqual(assign_section(view(fit_score=40, award_status=NOT_STATED)), "check")
+
+    def test_strong_fit_still_needs_eligibility_deadline_and_region(self):
+        self.assertEqual(assign_section(view(fit_score=82, award_status=NOT_STATED, eligibility_positive=False)), "check")
+        self.assertEqual(assign_section(view(fit_score=82, deadline_date=None, days_left=None)), "check")
+        self.assertEqual(assign_section(view(fit_score=82, region_flags=["alaska"])), "check")
+        self.assertEqual(assign_section(view(fit_score=82, eligibility_restricted=True)), "check")
 
     def test_soon_for_forecasts(self):
         self.assertEqual(assign_section(view(status="forecasted", backend_section="upcoming")), "soon")
@@ -50,7 +64,7 @@ class AssignSectionTests(unittest.TestCase):
         self.assertEqual(assign_section(view(eligibility_restricted=True)), "check")
         self.assertEqual(assign_section(view(eligibility_positive=False)), "check")  # no positive evidence
         self.assertEqual(assign_section(view(deadline_date=None, days_left=None)), "check")
-        self.assertEqual(assign_section(view(award_status=NOT_STATED)), "check")
+        self.assertEqual(assign_section(view(fit_score=45, award_status=NOT_STATED)), "check")
         self.assertEqual(assign_section(view(region_flags=["great lakes"])), "check")
 
     def test_missing_information_never_upgrades(self):
@@ -58,7 +72,8 @@ class AssignSectionTests(unittest.TestCase):
         order = {"top": 0, "check": 1, "lower": 2, "soon": 3}
         missing = {"deadline_date": None, "days_left": None, "award_status": NOT_STATED,
                    "eligibility_positive": False, "fit_score": None}
-        for start in (view(), view(eligibility_restricted=True), view(fit_score=20), view(award_status=NOT_STATED)):
+        for start in (view(), view(fit_score=40), view(eligibility_restricted=True), view(fit_score=20),
+                      view(award_status=NOT_STATED), view(fit_score=40, award_status=NOT_STATED)):
             before = assign_section(start)
             for name, value in missing.items():
                 after = assign_section(dataclasses.replace(start, **{name: value}))
@@ -67,8 +82,17 @@ class AssignSectionTests(unittest.TestCase):
 
 
 class GroupingTests(unittest.TestCase):
+    def test_fit_order_kept_when_backend_is_fit_sorted(self):
+        scores = [82, 62, 45, 40, 38]  # backend priority list is ranked by fit score
+        views = [view(id=str(i), fit_score=s, award_status=NOT_STATED if i < 2 else CONFIRMED)
+                 for i, s in enumerate(scores)]
+        for v in views:
+            v.section = assign_section(v)
+        top = [v.fit_score for v in group_views(views)["top"]]
+        self.assertEqual(top, [82, 62, 45, 40, 38])
+
     def test_backend_order_preserved_within_sections(self):
-        views = [view(id="a", fit_score=40), view(id="b", fit_score=90), view(id="c", award_status=NOT_STATED),
+        views = [view(id="a", fit_score=40), view(id="b", fit_score=90), view(id="c", fit_score=45, award_status=NOT_STATED),
                  view(id="d", fit_score=70), view(id="e", fit_score=10)]
         for v in views:
             v.section = assign_section(v)

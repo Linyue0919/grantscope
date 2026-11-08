@@ -38,7 +38,8 @@ text. It never overrides an explicit eligibility restriction.
 program officer.
 """)
     if "ai_help" in PAGES:
-        st.page_link(PAGES["ai_help"], label="AI Help (assistant, in development)")
+        with st.container(key="inlinelink_ai_help"):
+            st.page_link(PAGES["ai_help"], label="AI Help (assistant, in development)", width="content")
 
 
 def show_ai_help():
