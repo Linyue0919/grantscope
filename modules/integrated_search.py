@@ -15,6 +15,7 @@ from services.grant_store import LocalGrantStore
 from modules.search_research import save_research_record
 from modules.search_workflow import render_card
 from services.search_workflow import display_category
+from services.application_effort import assess_effort
 
 
 def show_search_screening():
@@ -33,8 +34,12 @@ def show_search_screening():
             st.info('Add the activities, beneficiaries, location and intended outcome. A few sentences are enough.');return
         with st.spinner('Screening live opportunities against your project and official requirements…'):
             try:
-                st.session_state[key]=search_potential_matches(agency,project,amount,threshold,search_fn=get_grants,
-                    details_fn=fetch_opportunity_details,today=today,notice_fn=OfficialEvidenceClient(max_documents=2).fetch)
+                st.session_state[key]=search_potential_matches(
+                    agency, project, amount, threshold,
+                    search_fn=get_grants, details_fn=fetch_opportunity_details,
+                    today=today, notice_fn=OfficialEvidenceClient(max_documents=2).fetch,
+                    ai_config=st.secrets, enable_ai=True,
+                )
             except Exception:
                 st.error('Official opportunity screening could not finish. No matches are being invented.');return
     result=st.session_state.get(key)
@@ -57,11 +62,33 @@ def show_search_screening():
         with st.container(border=True):
             st.subheader(record['title']);st.write('**Potential Match — full research incomplete**')
             st.caption(f"{record['federal_agency']} · Opportunity {oid} · Posted · Closes {record['deadline']['close_date'] or 'No fixed deadline; rolling availability needs verification'}")
+            fit=record.get('project_fit', {})
+            st.write('**Project Fit:** '+(
+                'Supported by official summary activity evidence: '+
+                ', '.join(match['activity'] for match in fit.get('matches', []))
+                if fit.get('supported_for_screening') else
+                'Not established from the official summary; further notice review is required.'
+            ))
+            ai_fit=record.get('relevance', {}).get('ai') or {}
+            st.write('**Strategic Fit:** '+(
+                f"GPT-4o assessment {ai_fit.get('score')}/100"
+                if ai_fit.get('status') == 'ok' and isinstance(ai_fit.get('score'), int)
+                else 'Not AI assessed or evidence was insufficient.'
+            ))
             st.write('**Can we apply?** '+record['eligibility']['label'])
             activities=', '.join(m['activity'] for m in record['project_fit']['matches'])
             st.write('**Should we apply?** Official summary contains project activity evidence: '+activities+'. Allowable activities still need NOFO verification.')
             st.write('**Can we act in time?** '+('Rolling intake: confirm funds and current intake; no future closing date is established.' if record.get('rolling_intake') else record['urgency']['label']+'. Intermediate deadlines and preparation time are not yet verified.'))
             st.caption('Official funding: '+record['funding']['display'])
+            effort=record.get('effort') or assess_effort(result['details'].get(oid))
+            st.write('**Application Effort:** '+effort['label'])
+            st.caption(effort['summary'])
+            if effort.get('requirements'):
+                st.caption('Requirements identified: '+', '.join(item['label'] for item in effort['requirements']))
+            if effort.get('not_required'):
+                st.caption('Officially not required: '+', '.join(effort['not_required']))
+            if not effort.get('requirements') and effort['level'] in {'unknown','insufficient','unclear'}:
+                st.caption('Missing information: full announcement requirements are not verified.')
             if record['funding_preference_note']:st.caption(record['funding_preference_note'])
             st.write('**Key concern:** '+(record.get('scope_requirement') or record['eligibility']['reasoning']))
             st.write('**Next action:** Read the controlling notice and confirm legal applicant, geography, activity costs and match before preparing an application.')

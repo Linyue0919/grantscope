@@ -8,6 +8,8 @@ from datetime import date
 from services.agency_profiles import get_agency_profile
 from services.discovery import diversified_retrieval_queries
 from services.match_engine import run_matching,MatchSettings,find_terms,OPEN,parse_date
+from services.ai_matching import AzureFitEvaluator, load_ai_config
+from services.ai_eligibility import AzureEligibilityEvaluator
 from services.eligibility_assessment import INELIGIBLE,LIKELY_INELIGIBLE,NOT_CHECKED
 from services.research_engine import (request_for_candidate,context_key,ResearchBudget,
                                      run_research,ResearchState,protocol_hash)
@@ -86,14 +88,21 @@ def project_profile(agency):
     return get_agency_profile(agency)
 
 
-def search_potential_matches(agency,project,amount=None,earliest=None,*,search_fn,details_fn,today=None,detail_limit=80,notice_fn=None,notice_limit=2):
+def search_potential_matches(agency,project,amount=None,earliest=None,*,search_fn,details_fn,
+                             today=None,detail_limit=80,notice_fn=None,notice_limit=2,
+                             ai_config=None, enable_ai=False, ai_limit=12):
     today=today or date.today();profile=project_profile(agency);details={}
     queries=project_queries(project)
+    config=load_ai_config(ai_config) if enable_ai else None
+    fit_ai=AzureFitEvaluator(config) if config else None
+    eligibility_ai=AzureEligibilityEvaluator(config) if config else None
     result=run_matching(profile,MatchSettings(min_days_left=None,min_award=None,
-        include_unknown_deadline=True,detail_limit=detail_limit,max_queries=8),
+        include_unknown_deadline=True,detail_limit=detail_limit,max_queries=8,
+        ai_limit=ai_limit,ai_eligibility_limit=ai_limit),
         search_fn=search_fn,details_fn=details_fn,today=today,extra_keywords=queries,details_cache=details,
         candidate_ranker=lambda h:project_activity_fit(project,h.get('title',''),h.get('description',''))['rank'],
-        prefer_official_deadlines=True)
+        prefer_official_deadlines=True,ai_evaluator=fit_ai,
+        eligibility_evaluator=eligibility_ai)
     all_records=result['all_records'];potentials=[]
     threshold=parse_date(earliest) if earliest else today
     notice_checks=0

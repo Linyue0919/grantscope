@@ -34,6 +34,64 @@ def test_project_screen_reuses_dashboard_and_excludes_irrelevance_ineligibility_
     assert result['potentials'][0]['relevance']['matched_goals'] # actual Dashboard agency-plan contract
 
 
+def test_search_uses_dashboard_ai_assessment_pipeline_when_enabled():
+    class Fit:
+        def __init__(self, config):
+            self.calls = []
+        def __call__(self, record, profile, details):
+            self.calls.append(record["id"])
+            return {"status": "ok", "score": 88, "explanation": "Official fit evidence supports the project.",
+                    "goal_ids": ["deq-1"],
+                    "evidence": [{"source_id": "D", "quote": details["description"]}]}
+
+    class Eligibility:
+        def __init__(self, config):
+            self.calls = []
+        def __call__(self, record, profile, details):
+            self.calls.append(record["id"])
+            return {"status": "ok", "verdict": "likely_eligible", "reasoning": "State governments are listed.",
+                    "quote": "State governments may apply.", "to_verify": []}
+
+    with patch("services.integration_search.AzureFitEvaluator", Fit), \
+         patch("services.integration_search.AzureEligibilityEvaluator", Eligibility):
+        result = search_potential_matches(
+            "Department of Environmental Quality", PROJECT,
+            search_fn=lambda *args: HITS,
+            details_fn=detail,
+            today=date(2026, 11, 7),
+            ai_config={"AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
+                       "AZURE_OPENAI_API_KEY": "test"},
+            enable_ai=True,
+        )
+    assessed = result["all_records"][0]
+    assert assessed["relevance"]["ai"]["status"] == "ok"
+    assert assessed["relevance"]["ai"]["score"] == 88
+    assert "effort" in assessed
+
+
+def test_search_ai_failure_keeps_evidence_and_does_not_invent_fit():
+    class FailingFit:
+        def __init__(self, config):
+            pass
+        def __call__(self, record, profile, details):
+            return {"status": "error", "errors": ["timeout"]}
+
+    with patch("services.integration_search.AzureFitEvaluator", FailingFit):
+        result = search_potential_matches(
+            "Department of Environmental Quality", PROJECT,
+            search_fn=lambda *args: HITS,
+            details_fn=detail,
+            today=date(2026, 11, 7),
+            ai_config={"AZURE_OPENAI_ENDPOINT": "https://example.openai.azure.com",
+                       "AZURE_OPENAI_API_KEY": "test"},
+            enable_ai=True,
+        )
+    assessed = result["all_records"][0]
+    assert assessed["relevance"]["ai"]["status"] == "error"
+    assert assessed["relevance"]["ai"].get("score") is None
+    assert assessed["effort"]["level"] in {"unknown", "insufficient", "unclear", "fewer_found", "moderate", "higher"}
+
+
 def test_deep_action_only_researches_clicked_id_and_reuses_cache(tmp_path):
     result=screen();provider=Provider();cache=ResearchStore(tmp_path/'cache')
     run=research_one_candidate(result,'910001',provider,cache=cache,evidence_client=Evidence())
