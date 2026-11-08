@@ -26,3 +26,8 @@ Scope: `fix/demo-search-precision` only. Do not change Dashboard's original matc
 3. Repeat the rural opioid prevention case: prison/juvenile-justice-only programs must not be presented as ordinary community-service Potential Matches.
 4. Verify one or two *currently posted* opportunities on their official pages, including applicant types, program purpose, geography, final due date, and award range. Do not label Forecasted or Needs Verification as open.
 5. Confirm Search, Dashboard, My Grants, and Sol persistence still work after integration. No production deployment until tested.
+
+## Follow-up audit — 2026-11-08
+- **S-10 (P1, confirmed in code):** Forecasted and Needs Verification lists previously checked relevant activity words and date uncertainty but could resurface a candidate rejected for a separate target-population, geography, applicant, or research-purpose mismatch. **Mitigation:** require no independent screening reasons before listing; added synthetic regression test. Commit `f142787`. Full pytest and live verification pending.
+- **S-11 (P1, confirmed in code):** The bounded Dashboard GPT-4o shortlist is ranked primarily by *agency strategic relevance*, while Search's displayed purpose is *user project relevance*. Even a working Azure evaluator does not guarantee it evaluates the highest project-fit candidates. **No change to Dashboard engine.** Next evaluate candidate selection at Search integration level with an explicit, evidence-grounded project-priority shortlist; preserve official status/eligibility and quote validation.
+- **Testing constraint:** GitHub API edits are remote commits, not execution. No claim of successful pytest or Azure evaluation until an actual runner executes them.
