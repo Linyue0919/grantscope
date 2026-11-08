@@ -46,7 +46,7 @@ def show_search_screening():
     if not result:return
     potentials=result['potentials'];needs_verification=result.get('needs_verification',[]);forecasted=result.get('forecasted',[]);store=LocalGrantStore()
     st.subheader('Potential Matches')
-    st.caption('Project-specific results use the shared Dashboard assessment pipeline, including bounded GPT-4o fit review, official eligibility checks, citation validation, and Application Effort analysis. Results are not legal eligibility determinations.')
+    st.caption('Official activity screening is project-specific. The shared Dashboard GPT-4o assessment measures alignment with verified agency strategic goals, not project-specific suitability. Eligibility and Application Effort are separate checks.')
     if not potentials:st.info('No sufficiently relevant, open potential matches passed screening. This is a bounded search, not proof that no funding exists.')
     deep=st.session_state.setdefault(key+'_deep',{})
     cache=ResearchStore(os.environ.get('GRANTSCOPE_RESEARCH_CACHE'))
@@ -63,7 +63,7 @@ def show_search_screening():
             st.subheader(record['title']);st.write('**Potential Match — full research incomplete**')
             st.caption(f"{record['federal_agency']} · Opportunity {oid} · Posted · Closes {record['deadline']['close_date'] or 'No fixed deadline; rolling availability needs verification'}")
             fit=record.get('project_fit', {})
-            st.write('**Project Fit:** '+(
+            st.write('**Official activity evidence:** '+(
                 'Supported by official summary activity evidence: '+
                 ', '.join(match['activity'] for match in fit.get('matches', []))
                 if fit.get('supported_for_screening') else
@@ -73,11 +73,14 @@ def show_search_screening():
             ai_fit=relevance.get('ai') or {}
             ai_score=ai_fit.get('score')
             strategic_score=relevance.get('fit_score')
-            st.write('**Project Fit:** '+(
-                f"Shared GPT-4o assessment {ai_score}/100"
+            st.write('**GPT-4o Strategic Alignment:** '+(
+                f"{ai_score}/100 — validated against official agency goals"
                 if ai_fit.get('status') == 'ok' and isinstance(ai_score, int)
-                else 'Not AI assessed or official evidence was insufficient.'
+                else 'Unavailable for this candidate; see AI evaluation coverage below.'
             ))
+            if ai_fit.get('status') not in (None, 'ok'):
+                st.caption('AI assessment status: '+str(ai_fit.get('status'))+
+                           '. A missing or rejected assessment is not a zero fit score.')
             st.write('**Strategic Fit:** '+(
                 f"{strategic_score}/100 from verified agency goals"
                 if isinstance(strategic_score, int)
@@ -85,10 +88,7 @@ def show_search_screening():
             ))
             st.write('**Can we apply?** '+record['eligibility']['summary'])
             activities=', '.join(m['activity'] for m in record['project_fit']['matches'])
-            if ai_fit.get('status') == 'ok' and ai_fit.get('explanation'):
-                st.write('**Should we apply?** '+ai_fit['explanation'])
-            else:
-                st.write('**Should we apply?** Official summary contains project activity evidence: '+activities+'. Allowable activities still need NOFO verification.')
+            st.write('**Should we apply?** Official summary contains project activity evidence: '+activities+'. Allowable activities and target population still need NOFO verification. Strategic alignment alone does not establish project suitability.')
             st.write('**Can we act in time?** '+('Rolling intake: confirm funds and current intake; no future closing date is established.' if record.get('rolling_intake') else record['urgency']['label']+'. Intermediate deadlines and preparation time are not yet verified.'))
             st.caption('Official funding: '+record['funding']['display'])
             effort=record.get('effort') or assess_effort(result['details'].get(oid))
@@ -124,7 +124,7 @@ def show_search_screening():
                 for gap in record['data_gaps']:st.caption(gap)
             st.link_button('Official opportunity',record['source_url'])
             research_label='Retry Deep Research' if research and research.get('state')==ResearchState.RESEARCH_FAILED.value else 'Resume Deep Research' if research else 'Deep Research'
-            if st.button(research_label,key='screened_deep_'+oid+'_'+key[-16:],disabled=bool(research and research.get('inflight_stage'))):
+            if os.environ.get('GRANTSCOPE_ENABLE_SEARCH_DEEP_RESEARCH') == '1' and st.button(research_label,key='screened_deep_'+oid+'_'+key[-16:],disabled=bool(research and research.get('inflight_stage'))):
                 try:
                     with st.spinner('Reading official notices and checking this opportunity…'):
                         run=research_one_candidate(result,oid,configured_provider(st.secrets),cache=cache,
@@ -149,7 +149,7 @@ def show_search_screening():
                 st.caption('Verification gap: ' + '; '.join(record.get('verification_reasons', [])))
                 ai_fit=record.get('relevance', {}).get('ai') or {}
                 if ai_fit.get('status') == 'ok':
-                    st.caption(f"Shared GPT-4o project assessment: {ai_fit.get('score')}/100; this does not confirm open status or eligibility.")
+                    st.caption(f"Shared GPT-4o strategic alignment: {ai_fit.get('score')}/100; this does not confirm open status or eligibility.")
                 st.link_button('Review official opportunity',
                                f"https://www.grants.gov/search-results-detail/{record['id']}")
     if forecasted:
@@ -169,6 +169,15 @@ def show_search_screening():
                                f"https://www.grants.gov/search-results-detail/{record['id']}")
     with st.expander('Coverage, other candidates and exclusions'):
         foundation=result['foundation'];stats=foundation['stats']
+        ai=foundation.get('ai') or {}
+        st.caption(f"GPT-4o strategic alignment: {ai.get('status', 'unknown')}; evaluated {ai.get('evaluated', 0)}, accepted {ai.get('accepted', 0)}, rejected {ai.get('rejected', 0)}, errors {ai.get('errors', 0)}. This is a bounded batch, not a project-fit score.")
+        st.caption('AI eligibility interpretation: '+str((foundation.get('ai_eligibility') or {}).get('status', 'unknown')))
+        if not result.get('agency') or not any(r.get('relevance', {}).get('keyword', {}).get('score') is not None for r in result['all_records']):
+            st.caption('No verified agency strategic-goal profile was available; Dashboard strategic AI assessment cannot run for this agency.')
+        elif ai.get('status') == 'disabled':
+            st.caption('GPT-4o was not configured or not enabled in this runtime. Check Azure configuration without exposing secrets.')
+        elif ai.get('status') in {'error', 'partial'}:
+            st.caption('Some AI calls failed or evidence validation rejected responses. Review sanitized server diagnostics; do not treat these as zero-fit grants.')
         st.caption(f"{stats['unique_candidates']} unique opportunities retrieved; {stats['details_loaded']} official details checked. Up to eight queries and 100 results per query; coverage is not exhaustive.")
         if len(potentials)>5:st.caption(f'{len(potentials)-5} additional screened leads remain in the audit download.')
         st.download_button('Download screening audit',json.dumps({**result,'deep_research':deep},ensure_ascii=False,default=str),file_name='grantscope-screening-audit.json',mime='application/json')
