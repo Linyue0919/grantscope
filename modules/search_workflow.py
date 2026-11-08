@@ -41,8 +41,14 @@ def render_card(record,agency,project,store,scope):
             st.write('**Can we act in time?** '+timing['readiness'])
             from services.preparation_time import preparation_estimate
             prep=preparation_estimate(record)
-            st.write('**Application preparation:** '+prep['summary'])
+            st.write('**Application Effort:** '+prep['summary'])
             st.caption('Confidence: '+prep['confidence']+' · '+(prep['timing'] if prep['available'] else prep['reason']))
+            if prep.get('evidence'):
+                st.caption('Evidence-backed requirements: '+', '.join(
+                    dict.fromkeys(item.get('key', 'official requirement') for item in prep['evidence'])
+                ))
+            else:
+                st.caption('Missing information: verified full-notice requirements were not sufficient for an effort estimate.')
             if prep['available']:
                 st.caption('Assumes dedicated staff, parallel drafting/budget work and timely external responses. Not a guaranteed timeline.')
             score=decision['project_activity_score']
