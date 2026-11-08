@@ -1,35 +1,24 @@
-
 import streamlit as st
-from modules.search import show_search
-from modules.profile import show_profile
+
 from modules.dashboard import show_dashboard
+from modules.profile import show_profile
+from modules.search import show_search
+from ui import saved_store
+from ui.how_it_works import show_ai_help, show_how_it_works
+from ui.nav import PAGES
+from ui.saved_page import show_saved
+from ui.styles import inject_css
 
-st.set_page_config(
-    page_title="GrantScope",
-    page_icon="🔎",
-    layout="wide"
-)
+st.set_page_config(page_title="GrantScope", page_icon="ui/assets/nc.svg", layout="wide")
+inject_css()
+st.logo("ui/assets/logo.svg", size="large")
 
-st.title("GrantScope")
-st.caption("AI-powered Federal Grant Discovery for North Carolina")
-
-st.sidebar.title("Navigation")
-
-page = st.sidebar.radio(
-    "Go to",
-    ["Dashboard", "Search", "Profile", "AI Help"]
-)
-
-if page == "Dashboard":
-    show_dashboard()
-
-elif page == "Search":
-    show_search()
-
-elif page == "Profile":
-    show_profile()
-
-elif page == "AI Help":
-    st.header("AI Assistant")
-    st.info("AI assistant is under development.")
-
+PAGES.update({
+    "brief": st.Page(show_dashboard, title="Brief", url_path="brief", default=True),
+    "browse": st.Page(show_search, title="Browse all", url_path="browse"),
+    "saved": st.Page(show_saved, title=f"Saved ({saved_store.count_all()})", url_path="saved"),
+    "profile": st.Page(show_profile, title="Agency profile", url_path="profile"),
+    "how": st.Page(show_how_it_works, title="How it works", url_path="how-it-works"),
+    "ai_help": st.Page(show_ai_help, title="AI Help", url_path="ai-help", visibility="hidden"),
+})
+st.navigation(list(PAGES.values()), position="top").run()

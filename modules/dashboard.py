@@ -1,33 +1,31 @@
-"""Dashboard: decision support for NC agencies choosing which federal grants to pursue."""
+"""Brief: the Funding Brief page (spec docs/DASHBOARD_REDESIGN.md).
+
+The data-loading functions below (_shared_details_cache, _shared_ai_cache, _ai_config,
+_cached_match) are unchanged from the previous Dashboard: the brief calls the backend
+exactly as before and only changes how results are presented (via ui/view_model.py).
+"""
 import os
 from datetime import date
 
 import streamlit as st
 
-from modules.grant_card import render_grant_card
 from modules.profile import get_preferences
-from services.agency_profiles import (
-    find_unprofiled_plan, get_agency_profile, list_profiled_agencies,
-    list_unprofiled_agencies, load_plan_data, resolve_agency_name,
-)
+from services.agency_profiles import get_agency_profile, list_profiled_agencies, resolve_agency_name
 from services.ai_eligibility import AzureEligibilityEvaluator
-from services.ai_matching import AzureFitEvaluator, describe_config, load_ai_config
-from services.application_effort import EffortAnalysisError, assess_effort, fetch_announcement_text
+from services.ai_matching import AzureFitEvaluator, load_ai_config
+from services.application_effort import find_announcement
 from services.grants_api import get_grants
-from services.match_engine import (
-    AI_WEIGHT, DESCRIPTION_CAP, ELIGIBLE_TYPE, FIT_POINTS, MatchSettings, run_matching,
-)
+from services.match_engine import MatchSettings, run_matching
 from services.opportunity_details import fetch_opportunity_details
+from ui import saved_store
+from ui.brief_sections import SECTION_DESCRIPTIONS, SECTION_RULES, SECTION_TITLES, group_views
+from ui.components.card import render_card, render_hidden, render_lower, render_soon
+from ui.components.detail_panel import render_panel
+from ui.nav import PAGES
+from ui.view_model import agency_display_name, build_views, header_stats, to_eastern
 
-DAYS_OPTIONS = {"Any open grant": None, "At least 7 days left": 7, "At least 14 days left": 14,
-                "At least 30 days left": 30, "At least 60 days left": 60, "At least 90 days left": 90}
-SCREEN_LABELS = {
-    "closed": "Deadline passed",
-    "not_enough_time": "Fewer days left than you require",
-    "not_eligible": "Confirmed eligibility restriction excludes state agencies",
-    "below_min_award": "Award ceiling below your minimum",
-    "unknown_deadline_hidden": "No closing date listed (hidden)",
-}
+DEFAULT_AGENCY = "Department of Health and Human Services"
+CLOSED = "__closed__"
 
 
 @st.cache_resource
@@ -69,257 +67,198 @@ def _cached_match(agency, min_days_left, min_award, include_unknown, keywords, u
     )
 
 
-def _analyze_announcement(record):
-    details = _shared_details_cache().get(record["id"])
-    store = st.session_state.setdefault("announcements", {})
-    try:
-        with st.spinner("Reading the official announcement..."):
-            store[record["id"]] = fetch_announcement_text(details)
-    except EffortAnalysisError as exc:
-        st.session_state.setdefault("announcement_errors", {})[record["id"]] = str(exc)
-    st.rerun()
+# --------------------------------------------------------------------------- state helpers
+
+def _agency():
+    agencies = list_profiled_agencies()
+    if st.session_state.get("brief_agency") not in agencies:
+        st.session_state["brief_agency"] = DEFAULT_AGENCY if DEFAULT_AGENCY in agencies else agencies[0]
+    return st.session_state["brief_agency"]
 
 
-def _with_announcement(record):
-    """Apply an on-demand full-announcement analysis to a record's effort assessment."""
-    analysis = st.session_state.get("announcements", {}).get(record["id"])
-    if not analysis:
-        return record
-    details = _shared_details_cache().get(record["id"])
-    return dict(record, effort=assess_effort(details, *analysis))
+def _set_agency(name):
+    st.session_state["brief_agency"] = name
+    st.session_state["brief_selected"] = None
+    st.session_state["brief_hidden"] = {}
 
 
-def _render_card(record, prefix):
-    error = st.session_state.get("announcement_errors", {}).pop(record["id"], None)
-    render_grant_card(_with_announcement(record), key_prefix=prefix, on_analyze=_analyze_announcement)
-    if error:
-        st.caption(f"⚠ Full announcement: {error}")
+def _select(opp_id):
+    st.session_state["brief_selected"] = opp_id
 
 
-def _default_agency(prefs, agencies):
-    resolved = resolve_agency_name(prefs.get("agency"))
-    return resolved if resolved in agencies else agencies[0]
+def _close_panel():
+    st.session_state["brief_selected"] = CLOSED
 
 
-def _render_unprofiled_notice(prefs):
-    saved = prefs.get("agency")
-    if saved and not resolve_agency_name(saved):
-        plan = find_unprofiled_plan(saved)
-        link = f" [Official plan]({plan['plan_url']})." if plan else ""
-        st.info(f"Your Profile agency ({saved}) does not have verified strategic goals yet, "
-                f"so grants cannot be assessed for it.{link} Choose a profiled agency below.")
+def _hide(opp_id):
+    st.session_state.setdefault("brief_hidden", {})[opp_id] = True
+    if st.session_state.get("brief_selected") == opp_id:
+        st.session_state["brief_selected"] = None
 
 
-def _render_summary(result):
-    results = result["results"]
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Priority grants", len(results), help="Open, enough time to apply, evidence of strategic fit.")
-    m2.metric("Appear eligible", sum(1 for r in results if r["eligibility"]["status"] == ELIGIBLE_TYPE),
-              help="Official applicant types or eligibility notes include state governments. Still verify.")
-    m3.metric("Strong fit (60+)", sum(1 for r in results if (r["fit_score"] or 0) >= 60))
-    m4.metric("Upcoming (not yet open)", len(result["upcoming"]),
-              help="Forecasted grants with strategic-plan evidence. Not yet accepting applications.")
+def _undo(opp_id):
+    st.session_state.setdefault("brief_hidden", {}).pop(opp_id, None)
 
 
-def _render_low_evidence(records):
-    if not records:
+def _toggle_save(view):
+    saved_store.toggle(_agency(), view)
+
+
+def _refresh():
+    _cached_match.clear()
+    st.session_state["brief_refreshing"] = True
+
+
+def load_brief(agency, min_days):
+    """Run the existing backend pipeline (cached) and build view models. No extra calls."""
+    prefs = get_preferences()
+    keywords = tuple(prefs.get("priorities", [])) if resolve_agency_name(prefs.get("agency")) == agency else ()
+    use_ai = bool(_ai_config())  # backend default: AI on when configured
+    result = _cached_match(agency, min_days, 0, False, keywords, use_ai, date.today().isoformat())
+    profile = get_agency_profile(agency)
+    views = build_views(result, profile, _shared_details_cache(), find_announcement)
+    return result, profile, views
+
+
+# --------------------------------------------------------------------------- header
+
+def _render_header(agency, profile, result, min_days_key):
+    st.markdown('<p class="gs-eyebrow">Funding brief</p>', unsafe_allow_html=True)
+    h1, switch = st.columns([5, 1.4], vertical_alignment="center")
+    h1.markdown(f'<p class="gs-h1">{agency_display_name(agency)}</p>', unsafe_allow_html=True)
+    with switch.popover("Change agency"):
+        st.markdown('<p class="gs-eyebrow">Switch to</p>', unsafe_allow_html=True)
+        for name in list_profiled_agencies():
+            label = agency_display_name(name) + ("  ·  Current" if name == agency else "")
+            st.button(label, key=f"agency_{name}", on_click=_set_agency, args=(name,), type="tertiary",
+                      disabled=name == agency, width="stretch")
+
+    plan = (f'<a href="{profile["plan_url"]}" target="_blank" rel="noopener">public strategic plan ↗</a>'
+            if profile and profile.get("plan_url") else "public strategic plan")
+    s1, s2, s3 = st.columns([5.6, 0.8, 1.4], vertical_alignment="center", gap="small")
+    s1.markdown(f'<p class="gs-scope">Open federal opportunities matched to your agency\'s {plan}, '
+                f'with at least</p>', unsafe_allow_html=True)
+    s2.number_input("Minimum days left to apply", min_value=0, max_value=365, step=1, key=min_days_key,
+                    label_visibility="collapsed")
+    s3.markdown('<p class="gs-scope">days to apply.</p>', unsafe_allow_html=True)
+
+
+def _render_header_meta(result, min_days):
+    stats = header_stats(result, min_days)
+    when = to_eastern(stats["generated_at"]) if stats["generated_at"] else None
+    when_text = f"Updated today, {when:%-I:%M %p} ET" if when else "Updated recently"
+    if stats["not_shown"]:
+        n = stats["not_shown"]
+        st.markdown(f'<p class="gs-small">{n} opportunit{"ies have" if n != 1 else "y has"} fewer than '
+                    f'{min_days} days left and {"are" if n != 1 else "is"} not shown.</p>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([2.4, 2.4, 1.3], vertical_alignment="center", gap="small")
+    with c1:
+        st.markdown('<p class="gs-small" style="margin:0">Looking for a specific program or requirement?</p>',
+                    unsafe_allow_html=True)
+        if "browse" in PAGES:
+            st.page_link(PAGES["browse"], label="Try a custom search in Browse all")
+    c2.markdown(f'<p class="gs-small gs-right" style="margin:0">{when_text}<br>{stats["reviewed"]} open '
+                f'opportunities from <a href="https://www.grants.gov/" target="_blank" rel="noopener">Grants.gov</a> '
+                f'reviewed</p>', unsafe_allow_html=True)
+    c3.button("⟳ Refresh data", key="brief_refresh", on_click=_refresh)
+
+
+# --------------------------------------------------------------------------- sections
+
+def _section_heading(name, count=None, extra=""):
+    title = SECTION_TITLES[name] + (f" ({count})" if count is not None else "")
+    st.markdown(f'<div class="gs-section-title">{title}</div>'
+                f'<p class="gs-section-desc">{SECTION_DESCRIPTIONS[name]}{extra}</p>', unsafe_allow_html=True)
+
+
+def _render_cards(views, selected_id, hidden, agency):
+    for view in views:
+        if hidden.get(view.id):
+            render_hidden(view, on_undo=_undo, reason_key=f"reason_{view.id}")
+            continue
+        render_card(view, selected=view.id == selected_id, on_view=_select, on_hide=_hide,
+                    saved=saved_store.is_saved(agency, view.id), on_toggle_save=_toggle_save)
+
+
+def _render_sections(groups, selected_id, hidden, agency):
+    top, check, soon, lower = groups["top"], groups["check"], groups["soon"], groups["lower"]
+    if not any(groups.values()):
+        st.info("No opportunities match these settings. Try fewer days to apply.")
         return
-    with st.expander(f"Lower-evidence candidates ({len(records)}) — open grants with low or unassessed fit"):
-        st.caption("These grants are open and passed screening, but no strategic-plan terms were found "
-                   "(Low fit) or their official description was not loaded (Not assessed). They are listed, "
-                   "not excluded, because relevant grants can use different wording.")
-        st.dataframe(
-            [{"Grant": r["title"], "Fit": r["relevance"]["label"], "Time to apply": r["urgency"]["label"],
-              "Eligibility": r["eligibility"]["label"], "Funding": r["funding"]["display"],
-              "Listing": r["source_url"]} for r in records],
-            column_config={"Listing": st.column_config.LinkColumn("Listing", display_text="Open ↗")},
-            hide_index=True, width="stretch",
-        )
+    _section_heading("top")
+    if top:
+        cap = SECTION_RULES["top_cap"]
+        show_all = len(top) > cap and st.session_state.get("brief_top_all", False)
+        _render_cards(top if show_all else top[:cap], selected_id, hidden, agency)
+        if len(top) > cap:
+            st.toggle(f"Show {len(top) - cap} more top candidates", key="brief_top_all")
+    else:
+        st.markdown(f'<p class="gs-small">No top candidates right now. {len(check)} '
+                    f'opportunit{"ies need" if len(check) != 1 else "y needs"} a quick check.</p>',
+                    unsafe_allow_html=True)
+    if check:
+        _section_heading("check")
+        _render_cards(check, selected_id, hidden, agency)
+    with st.expander(f"**Opening soon ({len(soon)})**"):
+        if soon:
+            for view in soon:
+                render_soon(view)
+        else:
+            st.caption("No forecasted opportunities for this agency right now.")
+    with st.expander(f"**Lower priority ({len(lower)})** · mostly indirect fit or a known blocker"):
+        cap = SECTION_RULES["lower_cap"]
+        for view in lower[:cap]:
+            render_lower(view)
+        if len(lower) > cap:
+            st.markdown(f'<p class="gs-small">and {len(lower) - cap} more.</p>', unsafe_allow_html=True)
+            if "browse" in PAGES:
+                st.page_link(PAGES["browse"], label="Try Browse all for a custom search")
 
 
-def _render_likely_ineligible(records):
-    if not records:
-        return
-    with st.expander(f"Likely not eligible to apply directly ({len(records)}) — verify before dismissing"):
-        st.caption("The official eligibility notes appear to limit applicants to categories that do not include "
-                   "state governments. These are interpretations, not confirmed exclusions, so they stay visible. "
-                   "Partnering with an eligible applicant may still be possible.")
-        st.dataframe(
-            [{"Grant": r["title"], "Strategic fit": r["fit_score"], "Why": r["eligibility"]["reasoning"],
-              "Official text": (r["eligibility"]["quote"] or "") + (" …" if r["eligibility"]["quote_truncated"] else ""),
-              "Basis": r["eligibility"]["certainty_label"], "Listing": r["source_url"]} for r in records],
-            column_config={"Listing": st.column_config.LinkColumn("Listing", display_text="Open ↗"),
-                           "Strategic fit": st.column_config.NumberColumn(format="%d")},
-            hide_index=True, width="stretch",
-        )
+def _render_footer(profile):
+    st.markdown('<div class="gs-footer">', unsafe_allow_html=True)
+    if "how" in PAGES:
+        st.page_link(PAGES["how"], label="How GrantScope assesses opportunities")
+    st.markdown(f'<p class="gs-small">Sources: Grants.gov listings and announcements, '
+                f'{profile["short_name"] if profile else "agency"} Strategic Plan · '
+                'GrantScope never guarantees eligibility or awards.</p></div>', unsafe_allow_html=True)
 
 
-def _render_coverage(result, profile, keywords):
-    stats, queries = result["stats"], result["queries"]
-    with st.expander("About these results: coverage and limits"):
-        sources = f"{profile['short_name']}'s strategic goals" + (" and your Profile priorities" if keywords else "")
-        st.markdown(
-            f"GrantScope searched Grants.gov with **{len(queries)} targeted keywords** drawn from {sources}. "
-            "Each agency is searched with its own keywords, so **different agencies see different candidate "
-            "sets**.\n\n"
-            f"- Grants.gov returns at most **100 records per keyword**; **{stats['capped_queries']} of "
-            f"{len(queries)}** searches reached that cap, so some matching opportunities may not have been "
-            f"retrieved.\n"
-            f"- **{stats['unique_candidates']}** unique opportunities were retrieved; "
-            f"**{stats['actionable_candidates']}** were still open (or upcoming) with enough time left.\n"
-            f"- Official details (eligibility, funding, requirements) were loaded for "
-            f"**{stats['details_loaded']}** of them. Grants without details show \"Not yet checked\" and "
-            "\"Fit not assessed\".\n"
-            "- Upcoming (forecasted) grants are listed separately and are never priority recommendations."
-        )
-        st.dataframe(
-            [{"Keyword": q["query"],
-              "Source": "Your Profile" if q["source"] == "user" else f"Plan goal {q['source']}",
-              "Records": q["retrieved"],
-              "Note": "Search failed" if q["error"] else ("100-record cap reached" if q["cap_reached"] else "")}
-             for q in queries],
-            hide_index=True, width="stretch",
-        )
-        if stats["screened_out_by_reason"]:
-            st.markdown("**Screened out by deterministic rules (excluded, not down-ranked):**")
-            st.markdown("\n".join(f"- {SCREEN_LABELS.get(code, code)}: {count}"
-                                  for code, count in sorted(stats["screened_out_by_reason"].items(),
-                                                            key=lambda kv: -kv[1])))
-        for error in result["errors"][:5]:
-            st.caption(f"⚠ {error}")
-
-
-def _render_method(profile, result):
-    data = load_plan_data()
-    ai = result["ai"]
-    ai_line = {
-        "disabled": "AI semantic assessment is **off**; the score is the keyword heuristic.",
-        "ok": f"AI semantic assessment (**{ai['model']}**) was used for {ai['accepted']} grant(s).",
-        "partial": f"AI semantic assessment (**{ai['model']}**): {ai['accepted']} accepted, "
-                   f"{ai['rejected']} rejected for unverifiable citations, {ai['errors']} failed. "
-                   "Others use the keyword heuristic.",
-        "error": "AI semantic assessment failed; the keyword heuristic is used.",
-    }[ai["status"]]
-    elig_ai = result.get("ai_eligibility", {})
-    if elig_ai.get("status", "disabled") != "disabled":
-        ai_line += (f" AI eligibility interpretation: {elig_ai['accepted']} accepted, {elig_ai['rejected']} rejected, "
-                    f"{elig_ai['errors']} failed.")
-    cfg = describe_config(_ai_config())
-    if cfg["configured"]:
-        ai_line += f" Configured deployment: `{cfg['deployment']}` (API {cfg['api_version']}, endpoint {cfg['endpoint']})."
-    with st.expander("How GrantScope decides"):
-        st.markdown(
-            f"""
-**1. Screening (deterministic, pass/fail).** Excluded: closed grants, grants with fewer days left than you
-require, grants with a **confirmed** eligibility restriction (the structured applicant types exclude state
-governments, or the notes explicitly say state governments are not eligible), and (if set) grants whose
-reported award ceiling is below your minimum. Forecasted grants go to *Upcoming*.
-
-**Eligibility** reads both the structured applicant types and the full eligibility notes. When the notes list
-eligible applicants without state governments, the grant is shown as *Likely not eligible* (an interpretation,
-kept visible but out of the priority list). Unclear cases stay in the list, flagged *Needs review*. A GPT-4o
-interpretation (when configured) can resolve unclear cases only with an exact quote from the official text; it
-can never override a confirmed restriction, and disagreements become *Needs review*.
-
-**2. Strategic fit (0–100, heuristic).** Measures relevance to {profile['short_name']}'s published goals only.
-Keyword heuristic: plan terms in the grant title (phrase {FIT_POINTS['title_phrase']}, word
-{FIT_POINTS['title_word']}) or official description (phrase {FIT_POINTS['description_phrase']}, word
-{FIT_POINTS['description_word']}; description-only evidence capped at {DESCRIPTION_CAP}), capped at 100. When AI is used, the score is an **experimental,
-unvalidated** blend ({int((1 - AI_WEIGHT) * 100)}% keyword, {int(AI_WEIGHT * 100)}% AI); AI answers are
-accepted only if their quotes are found verbatim in the grant text and goals. {ai_line}
-
-**3. Reported separately, never in the score:** eligibility, days left, funding (award ceilings are
-maximums, not guaranteed amounts) and application effort (requirements found in official text; no hour
-estimates).
-
-Strategic fit is **not** eligibility and **not** the probability of receiving an award.
-
-**Sources:** live Grants.gov API; {profile['short_name']} strategic plan ({profile['plan_period']}),
-[official PDF]({profile['plan_url']}), from the [NC OSBM directory]({data['source_directory']}).
-            """
-        )
-
+# --------------------------------------------------------------------------- page
 
 def show_dashboard():
-    st.header("Dashboard")
-    st.caption("Open federal grants that fit your agency's strategic plan, with time to apply.")
-
-    prefs = get_preferences()
-    agencies = list_profiled_agencies()
-    _render_unprofiled_notice(prefs)
-    ai_config = _ai_config()
-
-    c1, c2 = st.columns([2, 1])
-    agency = c1.selectbox("Agency", agencies, index=agencies.index(_default_agency(prefs, agencies)),
-                          key="dash_agency")
-    days_label = c2.selectbox("Time to apply", list(DAYS_OPTIONS), index=list(DAYS_OPTIONS).index("At least 30 days left"),
-                              key="dash_min_days", help="Hide grants that close too soon to prepare an application.")
-    min_days = DAYS_OPTIONS[days_label]
-
-    with st.expander("Advanced filters"):
-        a1, a2 = st.columns(2)
-        min_award = a1.number_input("Minimum award ceiling ($, optional)", min_value=0, step=50000, value=0,
-                                    key="dash_min_award",
-                                    help="Hides grants whose reported award ceiling is lower. "
-                                         "Grants that do not report an amount are kept.")
-        include_unknown = a2.checkbox("Include grants with no closing date", value=False, key="dash_unknown")
-        use_profile_keywords = a2.checkbox(
-            "Also search my Profile priorities", value=True, key="dash_profile_kw",
-            help="Adds your Profile priorities as extra search keywords. They do not change the score.")
-        use_ai = a1.toggle("AI semantic assessment (GPT-4o)", value=bool(ai_config), key="dash_ai",
-                           disabled=not ai_config,
-                           help="Requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY." if not ai_config
-                           else "Adds a validated semantic assessment to the keyword heuristic.")
-        if not ai_config:
-            st.caption("AI is not configured, so Strategic Fit uses the deterministic keyword heuristic.")
-
-    profile = get_agency_profile(agency)
-    same_agency = resolve_agency_name(prefs.get("agency")) == agency
-    keywords = tuple(prefs.get("priorities", [])) if (use_profile_keywords and same_agency) else ()
-
-    if st.button("↻ Refresh live data", help="Fetch the latest opportunities from Grants.gov"):
-        _cached_match.clear()
-
-    with st.spinner(f"Checking live Grants.gov opportunities against the {profile['short_name']} strategic plan..."):
+    agency = _agency()
+    st.session_state.setdefault("brief_days", 30)
+    st.session_state.setdefault("brief_hidden", {})
+    min_days = int(st.session_state["brief_days"])
+    refreshing = st.session_state.pop("brief_refreshing", False)
+    with st.spinner("Refreshing…" if refreshing else "Loading your funding brief…"):
         try:
-            result = _cached_match(agency, min_days, int(min_award), include_unknown, keywords,
-                                   bool(use_ai and ai_config), date.today().isoformat())
-        except Exception as exc:  # noqa: BLE001 - friendly error instead of a stack trace
-            st.error(f"Could not build the dashboard: {exc}")
+            result, profile, views = load_brief(agency, min_days)
+        except Exception:  # noqa: BLE001 - friendly message; details stay in server logs
+            st.error("Couldn't load opportunities from Grants.gov right now. Try Refresh data in a moment.")
             return
 
-    if result["errors"] and not result["stats"]["unique_candidates"]:
-        st.error("Grants.gov could not be reached. Please try Refresh in a moment.")
-        return
+    groups = group_views(views)
+    selected = st.session_state.get("brief_selected")
+    hidden = st.session_state["brief_hidden"]
+    visible = {v.id: v for v in views}
+    if selected is None or (selected != CLOSED and selected not in visible):
+        first = next((v for v in groups["top"] + groups["check"] if not hidden.get(v.id)), None)
+        selected = first.id if first else CLOSED
+        st.session_state["brief_selected"] = selected
+    panel_view = visible.get(selected) if selected != CLOSED else None
 
-    _render_summary(result)
-    st.caption(f"Live data as of {result['generated_at'].replace('T', ' ').replace('+00:00', ' UTC')}. "
-               "Strategic fit is a heuristic for relevance, separate from eligibility and award likelihood.")
-
-    results = result["results"]
-    st.subheader("Priority grants")
-    if not results:
-        st.warning("No open grants with strategic-plan evidence meet these filters. Try 'Any open grant' "
-                   "or review the lower-evidence candidates below.")
+    if panel_view:
+        main, side = st.columns([3, 2], gap="large")
     else:
-        show_all = len(results) > 10 and st.toggle(f"Show all {len(results)}", key="dash_show_all")
-        for record in results if show_all else results[:10]:
-            _render_card(record, "dash")
-
-    if result["upcoming"]:
-        with st.expander(f"Upcoming — forecasted, not yet accepting applications ({len(result['upcoming'])})"):
-            hidden = result["stats"]["upcoming_low_evidence"]
-            st.caption("Forecasted opportunities are announced but not open. Dates and amounts are estimates. "
-                       "Useful for planning; not priority recommendations."
-                       + (f" {hidden} other forecasted grant(s) without plan evidence are not listed." if hidden else ""))
-            for record in result["upcoming"][:15]:
-                _render_card(record, "up")
-
-    _render_likely_ineligible(result["likely_ineligible"])
-    _render_low_evidence(result["low_evidence"])
-    _render_coverage(result, profile, keywords)
-    _render_method(profile, result)
-    with st.expander(f"Other NC agencies ({len(list_unprofiled_agencies())} plans not yet profiled)"):
-        st.caption("These agencies have official strategic plans, but their goals have not been extracted "
-                   "and verified yet, so GrantScope does not assess grants for them.")
-        st.markdown("\n".join(f"- [{a['name']}]({a['plan_url']})" for a in list_unprofiled_agencies()))
+        main, side = st.container(), None
+    with main:
+        _render_header(agency, profile, result, "brief_days")
+        _render_header_meta(result, min_days)
+        _render_sections(groups, panel_view.id if panel_view else None, hidden, agency)
+        _render_footer(profile)
+    if side is not None:
+        with side:
+            render_panel(panel_view, on_close=_close_panel, saved=saved_store.is_saved(agency, panel_view.id),
+                         on_toggle_save=_toggle_save, how_it_works_page=PAGES.get("how"))
