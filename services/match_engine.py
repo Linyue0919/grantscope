@@ -424,7 +424,7 @@ def _safe_call(fn, *args):
 
 def run_matching(profile, settings=None, *, search_fn, details_fn, today=None, extra_keywords=(),
                  details_cache=None, ai_evaluator=None, announcements=None, eligibility_evaluator=None,
-                 candidate_ranker=None, prefer_official_deadlines=False):
+                 candidate_ranker=None, prefer_official_deadlines=False, ai_candidate_ranker=None):
     """Retrieve, screen, assess and rank grants for one agency profile.
 
     search_fn(keyword, rows) -> list of Grants.gov search hits
@@ -534,7 +534,19 @@ def run_matching(profile, settings=None, *, search_fn, details_fn, today=None, e
         open_records = [r for r in records.values() if r["section"] in (PRIORITY, UPCOMING)]
         rescue = [r for r in records.values() if r["section"] == LOW_EVIDENCE and r["details_loaded"]]
         rescue_n = min(4, settings.ai_limit // 3)
-        chosen = rank_results(open_records)[:settings.ai_limit - rescue_n] + rescue[:rescue_n]
+        if ai_candidate_ranker is None:
+            # Preserve Dashboard's original selection semantics.
+            chosen = rank_results(open_records)[:settings.ai_limit - rescue_n] + rescue[:rescue_n]
+        else:
+            # Search-only candidate priority. The GPT-4o strategic-goal prompt,
+            # citations and score remain unchanged.
+            def search_priority(record):
+                detail = details_for(record["id"]) or {}
+                return (-ai_candidate_ranker(record, detail), record["id"])
+            ranked_open = sorted((r for r in open_records if r["details_loaded"]),
+                                 key=search_priority)
+            ranked_rescue = sorted(rescue, key=search_priority)
+            chosen = ranked_open[:settings.ai_limit - rescue_n] + ranked_rescue[:rescue_n]
         ai_summary = run_ai(ai_evaluator, chosen, ai_fit)
     if ai_fit or ai_elig:
         records = {gid: evaluate(gid) for gid in candidates}
