@@ -76,7 +76,8 @@ def test_search_ai_failure_keeps_evidence_and_does_not_invent_fit():
         def __call__(self, record, profile, details):
             return {"status": "error", "errors": ["timeout"]}
 
-    with patch("services.integration_search.AzureFitEvaluator", FailingFit):
+    with patch("services.integration_search.AzureFitEvaluator", FailingFit), \
+         patch("services.integration_search.AzureEligibilityEvaluator", return_value=lambda *args: {"status":"skipped","errors":[]}):
         result = search_potential_matches(
             "Department of Environmental Quality", PROJECT,
             search_fn=lambda *args: HITS,

@@ -16,6 +16,7 @@ from modules.search_research import save_research_record
 from modules.search_workflow import render_card
 from services.search_workflow import display_category
 from services.application_effort import assess_effort
+from modules.grant_card import _evidence_tab as render_strategic_evidence
 
 
 def show_search_screening():
@@ -46,7 +47,7 @@ def show_search_screening():
     if not result:return
     potentials=result['potentials'];store=LocalGrantStore()
     st.subheader('Potential Matches')
-    st.caption('Project-specific screening leads from official summaries — not verified recommendations. Full notice, applicant conditions and preparation requirements remain to be researched. Screening makes no AI calls; Deep Research uses paid Azure AI.')
+    st.caption('Project-specific screening leads from official summaries — not verified recommendations. Full notice, applicant conditions and preparation requirements remain to be researched. Screening uses the shared GPT-4o assessments when configured; Deep Research is a separate paid Sol analysis.')
     if not potentials:st.info('No sufficiently relevant, open potential matches passed screening. This is a bounded search, not proof that no funding exists.')
     deep=st.session_state.setdefault(key+'_deep',{})
     cache=ResearchStore(os.environ.get('GRANTSCOPE_RESEARCH_CACHE'))
@@ -100,9 +101,8 @@ def show_search_screening():
                 if record.get('purpose_source'):
                     st.text(record['purpose_source']['quote']);st.link_button('Official notice — screened activity evidence',record['purpose_source']['url'])
                 if record.get('rolling_intake'):st.text((result['details'].get(oid) or {}).get('deadline_note',''))
-                st.caption('Agency strategic fit is separate from project fit and is a heuristic, not an AI recommendation.')
-                for goal in record['relevance'].get('matched_goals',[]):
-                    st.text(goal['quote']);st.link_button('Official agency plan',goal['plan_url']+'#page='+str(goal['page']))
+                st.caption('Agency strategic fit is separate from project fit. Shared AI scores are shown only after their citation checks pass; otherwise the keyword baseline remains a heuristic.')
+                render_strategic_evidence(record)
                 for gap in record['data_gaps']:st.caption(gap)
             st.link_button('Official opportunity',record['source_url'])
             research_label='Retry Deep Research' if research and research.get('state')==ResearchState.RESEARCH_FAILED.value else 'Resume Deep Research' if research else 'Deep Research'

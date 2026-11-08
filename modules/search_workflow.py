@@ -40,16 +40,14 @@ def render_card(record,agency,project,store,scope):
             st.write('**Can we apply?** '+apply_text)
             st.write('**Should we apply?** '+should[result['should_apply']])
             st.write('**Can we act in time?** '+timing['readiness'])
-            official_text=' '.join(
-                str(source.get('text') or '')
-                for source in record.get('evidence', {}).get('sources', [])
-                if source.get('kind') == 'official_document'
-            )
+            documents=[source for source in record.get('evidence', {}).get('sources', [])
+                       if source.get('kind') == 'official_document']
+            official_text='\n\n'.join(str(source.get('text') or '') for source in documents)
             effort=assess_effort({
-                'description': official_text,
-                'eligibility_text': '',
-                'attachments': [],
-            })
+                'description': '', 'eligibility_text': '', 'attachments': [],
+                'cost_sharing': record.get('evidence', {}).get('financials', {}).get('cost_sharing'),
+            }, announcement_text=official_text or None,
+                announcement_url=documents[0].get('url') if documents else None)
             st.write('**Application Effort:** '+effort['label'])
             st.caption(effort['summary'])
             if effort.get('requirements'):
