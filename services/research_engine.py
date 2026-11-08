@@ -107,19 +107,24 @@ def final_result(request,evidence,analysis,decision,reviewed_gate_inputs=None):
                'ACTIONABLE' if gates.actionable else 'CONDITIONAL' if evidence['coverage']['primary_notice_ingested'] else 'INSUFFICIENT_EVIDENCE')
     if viability=='ACTIONABLE' and decision['application_viability']!='ACTIONABLE':viability='CONDITIONAL'
     if viability!='CONFIRMED_EXCLUSION' and decision['application_viability']=='INSUFFICIENT_EVIDENCE':viability='INSUFFICIENT_EVIDENCE'
+    from services.search_workflow import opportunity_timing
+    timing=opportunity_timing({},evidence)
+    if not timing['accepting_possible'] and viability=='ACTIONABLE':viability='CONDITIONAL'
     should=('reject' if viability=='CONFIRMED_EXCLUSION' or decision['should_apply']=='reject' else 'pursue' if viability=='ACTIONABLE' else
             'insufficient_evidence' if decision['should_apply']=='insufficient_evidence' else 'conditional_lead')
     shared=SharedResult(CONTRACT_VERSION,request.opportunity.opportunity_id,fingerprint(make_packet(request,evidence)),'deep',
         evidence['coverage'],{'project':{'score':decision['project_activity_score'] if request.mode=='project_first' else None,'status':'model_assessment' if request.mode=='project_first' else 'not_applicable'},
             'strategic':{'score':decision['strategic_score'],'status':'model_assessment' if request.verified_goals else 'unavailable'}},
-        gates,tuple(decision['decision_claims']),tuple(analysis['counterevidence']),
+        gates,tuple(p.resolve_decision_claims(decision,analysis,make_packet(request,evidence))),tuple(analysis['counterevidence']),
         tuple(dict.fromkeys(analysis['missing_documents_or_requirements']+evidence['coverage']['gaps']+list(gates.unresolved))),
         'direct_route_excluded' if any(r['gate']=='applicant' and r['state']=='CONFIRMED_EXCLUSION' for r in gates.gates) else
         'direct_route_supported_subject_to_notice' if gates.actionable else 'needs_review',
-        should,decision['can_act_in_time'],tuple(decision['next_actions']),
+        should,('not_open_or_past' if timing['past'] or timing['status'] in {'Closed','Archived'} else
+                'needs_review' if timing['status']!='Posted' else decision['can_act_in_time']),tuple(decision['next_actions']),
         {'provider':'experimental deep research','human_entailment':'not independently adjudicated'})
     validate_shared_result(shared)
     return {'classification':viability,'shared_result':asdict(shared),'analysis':analysis,'decision':decision,
+            'resolved_decision_claims':p.resolve_decision_claims(decision,analysis,make_packet(request,evidence)),
             'model_viability':decision['application_viability'],'final_gate_policy':'Model claims do not constitute official eligibility attestation'}
 
 
@@ -255,16 +260,22 @@ class AzureSolProvider:
         self.key=str(config.get('AZURE_OPENAI_API_KEY',''))
         if not self.key:raise ValueError('Azure credential unavailable')
         self.session=session or requests.Session();self.last_start=0
+        self.tpm=max(200000,int(config.get('RESEARCH_TPM',200000)));self.window=[];self.blocked_until=0
 
     def complete(self,packet,stage,analysis=None):
         payload={'model':'grantscope-bench-gpt61sol-v1','messages':[{'role':'system','content':p.ANALYSIS_INSTRUCTION if stage==1 else p.DECISION_INSTRUCTION},
-            {'role':'user','content':json.dumps({'original_evidence_packet':packet,**({'own_validated_analysis':analysis} if stage==2 else {})},ensure_ascii=False)}],
+            {'role':'user','content':json.dumps({'original_evidence_packet':packet,**({'own_validated_analysis':analysis,'validated_claim_registry':p.claim_registry(analysis)} if stage==2 else {})},ensure_ascii=False)}],
             'reasoning_effort':'medium','max_completion_tokens':25000 if stage==1 else 8000,
             'response_format':{'type':'json_schema','json_schema':{'name':'grant_analysis' if stage==1 else 'grant_decision','strict':True,
                 'schema':p.ANALYSIS_SCHEMA if stage==1 else p.DECISION_SCHEMA}}}
         if len(json.dumps(payload,ensure_ascii=False).encode())+4096>INPUT_TOKEN_BOUND:
             return {'error':'Input exceeds conservative budget; evidence not truncated','fatal':False}
-        wait=max(0,61-(time.perf_counter()-self.last_start))
+        # Deployment TPM and observed usage control pacing; no unconditional minute sleep.
+        now=time.perf_counter();self.window=[(t,n) for t,n in self.window if now-t<60]
+        estimate=len(json.dumps(payload,ensure_ascii=False).encode())+payload['max_completion_tokens']
+        wait=max(0,self.blocked_until-now)
+        if self.window and sum(n for _,n in self.window)+estimate>self.tpm:
+            wait=max(wait,60-(now-self.window[0][0]))
         if wait:time.sleep(wait)
         start=time.perf_counter();self.last_start=start
         result={'request_sent':False,'stage':stage,'deployment':payload['model'],'started_at':datetime.now(timezone.utc).isoformat(),'pacing_seconds':wait}
@@ -274,11 +285,19 @@ class AzureSolProvider:
                 headers={'api-key':self.key,'Content-Type':'application/json'},timeout=(10,180),allow_redirects=False)
             result.update(http_status=r.status_code,raw_response=r.text.replace(self.key,'[REDACTED]'))
             envelope=r.json();result['usage']=envelope.get('usage',{})
+            headers=getattr(r,'headers',{})
+            if isinstance(headers,dict) or hasattr(headers,'get'):
+                try:
+                    if int(headers.get('x-ratelimit-remaining-requests','1'))==0:
+                        reset=str(headers.get('x-ratelimit-reset-requests','60')).removesuffix('s')
+                        self.blocked_until=time.perf_counter()+min(120,max(0,float(reset)))
+                except (ValueError,TypeError):pass
             if r.status_code!=200:raise ResearchAbort('Azure HTTP '+str(r.status_code))
             if envelope.get('model')!='gpt-6.1-sol-2026-09-29':raise ResearchAbort('Unexpected model version')
             usage=result['usage'];total=usage['prompt_tokens'];out=usage['completion_tokens'];detail=usage.get('prompt_tokens_details') or {}
             reads=detail.get('cached_tokens',0);writes=detail.get('cache_write_tokens',0)
             if any(not isinstance(v,int) or v<0 for v in [total,out,reads,writes]) or reads+writes>total:raise ResearchAbort('Ambiguous billing telemetry')
+            self.window.append((start,total+out))
             cost=((total-reads-writes)*2+reads*.1+writes*2.5+out*10)/1e6;result['estimated_cost_usd']=cost
             if cost>(INPUT_TOKEN_BOUND*2.5+(25000 if stage==1 else 8000)*10)/1e6:raise ResearchAbort('Cost exceeded reservation')
             choice=envelope['choices'][0];result['finish_reason']=choice.get('finish_reason')
@@ -333,3 +352,24 @@ def request_for_candidate(agency,project,candidate,*,mode='project_first',profil
         Opportunity(str(int(str(candidate.get('opportunity_id') or candidate.get('id')))) if str(candidate.get('opportunity_id') or candidate.get('id')).isdecimal() else str(candidate.get('opportunity_id') or candidate.get('id')),str(candidate.get('title') or 'Untitled'),
             str(candidate.get('agencyName') or candidate.get('agencyCode') or 'Unknown'),str(candidate.get('category') or 'Unknown')),
         tuple(profile.get('goal_sources',())),('Official evidence intake pending',),datetime.now(ZoneInfo('America/New_York')).date().isoformat())
+
+
+def configured_provider(config):
+    """Use an existing CLI Entra session when server-configured; never log tokens."""
+    import subprocess
+    cli=os.environ.get('GRANTSCOPE_AZURE_CLI')
+    if not cli:return AzureSolProvider(config)
+    class EntraSession:
+        def __init__(self):self.session=requests.Session()
+        def post(self,url,**kwargs):
+            result=subprocess.run([cli,'account','get-access-token','--resource','https://cognitiveservices.azure.com/',
+                '--query','accessToken','-o','tsv','--only-show-errors'],capture_output=True,text=True,timeout=60)
+            if result.returncode or not result.stdout.strip():raise ResearchAbort('Azure interactive authentication required')
+            token=result.stdout.strip()
+            kwargs['headers']={k:v for k,v in kwargs.get('headers',{}).items() if k.lower()!='api-key'}
+            kwargs['headers']['Authorization']='Bearer '+token
+            response=self.session.post(url,**kwargs)
+            response._content=response.content.replace(token.encode(),b'[REDACTED]')
+            return response
+    return AzureSolProvider({'AZURE_OPENAI_ENDPOINT':os.environ.get('GRANTSCOPE_AZURE_ENDPOINT','https://grantscope-ai-team07.openai.azure.com'),
+        'AZURE_OPENAI_API_KEY':'UNUSED_ENTRA_AUTH_PLACEHOLDER'},session=EntraSession())

@@ -17,7 +17,8 @@ AGENCY = 'Department of Environmental Quality'
 PROJECT = 'Cybersecurity training'
 
 
-def test_full_search_pipeline_and_rendering():
+def test_full_search_pipeline_and_rendering(monkeypatch):
+    monkeypatch.setenv("GRANTSCOPE_LEGACY_SEARCH","1")
     calls = []
     broken = {'5': True}
 

@@ -51,7 +51,8 @@ def test_published_demo_is_actual_conditional_result_with_official_dates():
     assert 'State Forester' in notice and '1:1' in notice
 
 
-def test_actual_search_foundation_no_paid_calls_and_save(tmp_path):
+def test_actual_search_foundation_no_paid_calls_and_save(tmp_path,monkeypatch):
+    monkeypatch.setenv("GRANTSCOPE_LEGACY_SEARCH","1")
     store=LocalGrantStore(tmp_path/'saved.json')
     cache=Mock();cache.get.return_value={'records':records()}
     seed=[{'id':'1','title':'High candidate'},{'id':'2','title':'Low candidate'}]

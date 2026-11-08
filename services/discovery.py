@@ -234,8 +234,20 @@ def diversified_retrieval_queries(profile, project_description="", max_queries=8
     queries = []
     if project_description and project_description.strip():
         project = " ".join(project_description.strip().split())[:240]
-        queries.append(project)
+        # Natural-language sentences are poor Grants.gov search keywords.
+        import re
         lowered = project.lower()
+        themes = [
+            (('water','watershed','riparian','runoff'), ['watershed restoration','water quality','water monitoring']),
+            (('broadband','internet','connectivity'), ['rural broadband','broadband infrastructure','digital equity']),
+            (('flood','stormwater','resilience'), ['flood resilience','stormwater mitigation']),
+            (('health','disease','public health'), ['public health','health preparedness']),
+            (('coastal','marine','habitat'), ['coastal restoration','marine habitat'])]
+        for triggers, terms in themes:
+            if any(t in lowered for t in triggers):queries.extend(terms)
+        stop=set('the a an and or to for of in on with through seeks funding fund project north carolina agency department government working proposed require verification we our will'.split())
+        words=list(dict.fromkeys(w for w in re.findall(r'[a-z][a-z-]{2,}',lowered) if w not in stop))
+        if words:queries.append(' '.join(words[:4]))
         if any(term in lowered for term in ("cyber", "security", "awareness")):
             queries.extend(("cybersecurity education", "school safety"))
         if any(term in lowered for term in ("faculty", "teacher", "school", "k-12")):

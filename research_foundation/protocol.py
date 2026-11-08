@@ -85,10 +85,11 @@ def validate_analysis(value,packet):
 
 def validate_decision(value,analysis,packet):
     validate_schema(value,DECISION_SCHEMA)
-    checks=citation_checks({'dimensions':[{'claims':value['decision_claims']}],'counterevidence':[]},packet)
+    claims=resolve_decision_claims(value,analysis,packet)
+    checks=citation_checks({'dimensions':[{'claims':claims}],'counterevidence':[]},packet)
     if not all(c['passed'] for c in checks):raise ValueError('Source-specific decision citation validation failed')
     if not value['next_actions'] or not value['decision_rationale'].strip():raise ValueError('Decision rationale and next actions required')
-    if not any(c['source_id'] in packet['opportunity_source_ids'] for c in value['decision_claims']):raise ValueError('A source-backed decision claim is required')
+    if not any(c['source_id'] in packet['opportunity_source_ids'] for c in claims):raise ValueError('A source-backed decision claim is required')
     mode=packet['original_request']['mode']
     if (mode=='project_first' and value['project_activity_score'] is None) or (mode=='agency_first' and value['project_activity_score'] is not None):
         raise ValueError('Relevance score must respect agency/project scope')
@@ -112,3 +113,34 @@ def validate_decision(value,analysis,packet):
 # Agency-only requests have no project relevance to score.
 DECISION_SCHEMA['properties']['project_activity_score']['type']=['integer','null']
 DECISION_INSTRUCTION += '\nIf original_request.mode is agency_first, project_activity_score must be null; no project has been supplied.'
+
+
+def claim_registry(analysis):
+    """Stable within a validated analysis; never identify claims by model-written IDs."""
+    return {f'{d["dimension"]}-{i+1}':dict(c) for d in analysis['dimensions']
+            for i,c in enumerate(d['claims'])} | {
+                f'COUNTER-{i+1}':dict(c) for i,c in enumerate(analysis['counterevidence'])}
+
+
+def resolve_decision_claims(decision,analysis,packet):
+    # Revalidate the referenced analysis against the exact original packet, including
+    # source identity, qualifiers and permissions. A reference is not a new fact.
+    validate_analysis(analysis,packet)
+    registry=claim_registry(analysis)
+    ids=decision['evidence_claim_ids']
+    if len(ids)!=len(set(ids)) or any(key not in registry for key in ids):
+        raise ValueError('Unknown or duplicate validated evidence claim ID')
+    return [registry[key] for key in ids]+decision['decision_claims']
+
+
+DECISION_SCHEMA['properties']['evidence_claim_ids']=arr(TEXT)
+DECISION_SCHEMA['required'].append('evidence_claim_ids')
+DECISION_INSTRUCTION += '''
+Use evidence_claim_ids to reference the supplied validated_claim_registry for ALL
+facts already established in Stage One. Do not rewrite, shorten, concatenate or
+paraphrase their quotations. decision_claims should normally be empty; it is ONLY
+for genuinely NEW material assertions and each requires a short contiguous exact
+quote from its own supplied source. Never use ellipses to join passages. An
+unresolved_requirement without a source must have an empty quote. Cite evidence
+IDs in the rationale and actions where relevant. Preserve counterevidence and
+conditions; claim references do not establish legal eligibility or entailment.'''

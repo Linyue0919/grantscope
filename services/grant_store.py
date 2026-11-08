@@ -70,7 +70,8 @@ class LocalGrantStore:
         key = record_key(agency, opportunity_id)
         current = records.get(key, {"agency": agency, "opportunity_id": opportunity_id})
         for field, value in updates.items():
-            if field in {"bookmarked", "decision", "notes"}:
+            if field in {"bookmarked", "decision", "notes", "project_description", "viability_state", "research_depth",
+                         "project_relevance", "strategic_relevance", "researched_at"}:
                 current[field] = value
             elif field in {"title", "federal_agency", "close_date", "official_url"}:
                 current.setdefault(field, value)

@@ -274,7 +274,7 @@ def _format_amount(value):
     return f"${value:,.0f}" if value is not None else "Not reported"
 
 
-def show_search():
+def _show_legacy_search():
     st.header("Find Federal Funding")
     st.caption("Find fewer grants. Find the right grants. Act sooner.")
     foundation = st.checkbox("Evidence-first research", value=True, key="search_foundation_enabled")
@@ -881,3 +881,12 @@ def show_search():
                     "View official opportunity",
                     f"https://www.grants.gov/search-results-detail/{opportunity_id}",
                 )
+
+
+def show_search():
+    """Simple production entry; legacy controls remain a developer-only recovery path."""
+    import os
+    if os.environ.get('GRANTSCOPE_LEGACY_SEARCH')=='1':
+        return _show_legacy_search()
+    from modules.search_workflow import show_one_click_search
+    return show_one_click_search()

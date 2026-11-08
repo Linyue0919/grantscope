@@ -122,4 +122,5 @@ class OfficialEvidenceClient:
         if not full_notice:gaps.append('Primary full notice not identified and ingested; summary is insufficient for deep recommendation')
         gaps.append('Amendment chain and referenced policies not independently certified complete')
         return {'opportunity_id':oid,'sources':sources,'inventory':inventory,'coverage':{'primary_notice_ingested':full_notice,
-            'amendments_verified':False,'gaps':gaps},'fetched_at':now,'status':data.get('ost','Unknown')}
+            'amendments_verified':False,'gaps':gaps},'fetched_at':now,'status':data.get('ost','Unknown'),
+                'close_date':fields.get('responseDateStr') or fields.get('estApplicationResponseDateStr')}

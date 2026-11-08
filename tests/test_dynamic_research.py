@@ -50,7 +50,7 @@ class Provider:
                 'decision_rationale':'Synthetic conditional draft','material_conditions':['Verify lead applicant and match'],
                 'next_actions':['Ask official program staff to verify the proposed activities and route'],
                 'relevance_confidence':'Medium','project_activity_score':70 if packet['original_request']['mode']=='project_first' else None,
-                'strategic_score':None,'application_viability':'CONDITIONAL','decision_claims':[claim]}
+                'strategic_score':None,'application_viability':'CONDITIONAL','decision_claims':[claim],'evidence_claim_ids':[]}
         return {'value':value,'request_sent':True,'usage':{'prompt_tokens':100,'completion_tokens':100},'estimated_cost_usd':.001,'elapsed_seconds':.1,'raw_response':json.dumps(value)}
 
 
@@ -169,33 +169,28 @@ def test_streamlit_multi_grant_dynamic_research_and_save_without_a_live_call(tmp
     from services.grant_store import LocalGrantStore
     provider=Provider();store=LocalGrantStore(tmp_path/'saved.json');cache=Mock();cache.get.return_value={'records':[]}
     research_store=ResearchStore(tmp_path/'research')
-    with patch('modules.search.get_grants',return_value=GRANTS),patch('modules.search.AIRecommendationCache',return_value=cache),\
-         patch('modules.search.LocalGrantStore',return_value=store),patch('modules.search_research.ResearchStore',return_value=research_store),\
-         patch('modules.search_research.AzureSolProvider',return_value=provider),patch('services.research_engine.OfficialEvidenceClient',return_value=Evidence()),\
+    with patch('modules.search_workflow.get_grant_details',return_value={}),patch('modules.search_workflow.get_grants',return_value=GRANTS),patch('modules.search_workflow.AIRecommendationCache',return_value=cache),\
+         patch('modules.search_workflow.LocalGrantStore',return_value=store),patch('modules.search_workflow.ResearchStore',return_value=research_store),\
+         patch('modules.search_workflow.configured_provider',return_value=provider),patch('services.research_engine.OfficialEvidenceClient',return_value=Evidence()),\
          patch('modules.search.prepare_ai_recommendations') as legacy_paid:
         at=AppTest.from_string('from modules.search import show_search\nshow_search()').run()
-        assert not at.session_state.filtered_state.get('search_show_example')
-        at.selectbox(key='search_agency').select('Other NC agency / enter profile').run()
+        assert not at.checkbox
+        at.selectbox(key='search_agency').select('Other NC agency').run()
         at.text_input(key='search_custom_agency').input('Synthetic NC technology office').run()
-        at.text_area[0].input('Rural broadband buildout')
-        at.text_area(key='search_agency_mission').input('Support rural connectivity')
+        at.text_area(key='search_project').input('Rural broadband buildout')
         at.button(key='search_submit').click().run()
         assert not at.exception
-        run_button=next(b for b in at.button if b.key and b.key.startswith('dynamic_research_run_'))
-        assert run_button.disabled
-        consent=next(c for c in at.checkbox if c.key and c.key.startswith('dynamic_research_consent_'))
-        at.checkbox(key=consent.key).check().run()
-        at.button(key=run_button.key).click().run()
-        assert not at.exception
-        assert len(provider.calls)==6
+        assert len(provider.calls)==4
         assert all(c[2]['original_request']['agency']['name']=='Synthetic NC technology office' for c in provider.calls)
-        assert len({c[0] for c in provider.calls})==3
-        assert sum('RESEARCHED_AND_VALIDATED' in e.value for e in at.markdown)>=3
-        save=next(b for b in at.button if b.key and b.key.startswith('dynamic_save_'))
+        assert len({c[0] for c in provider.calls})==2
+        assert any('2 researched with validated sources' in e.value for e in at.markdown)
+        save=next(b for b in at.button if b.key and b.key.startswith('workflow_save_'))
         oid=save.key.rsplit('_',1)[1]
         at.button(key=save.key).click().run()
-        assert 'experimental researched result' in store.get('Synthetic NC technology office',oid)['notes']
-        assert len(provider.calls)==6 # Save/rerun does not repeat provider calls
+        assert 'Original project: Rural broadband' in store.get('Synthetic NC technology office',oid)['notes']
+        assert len(provider.calls)==4
+        at.button(key='search_submit').click().run()
+        assert len(provider.calls)==4 # explicit identical Search reuses matching verified outputs
         legacy_paid.assert_not_called();cache.save.assert_not_called()
 
 
