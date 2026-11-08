@@ -336,10 +336,42 @@ class AzureSolProvider:
 
 class ResearchStore:
     """Separate versioned research cache; never edits legacy recommendation caches."""
-    def __init__(self,root=None):self.root=Path(root) if root else Path(os.environ.get('GRANTSCOPE_DATA_DIR','.grantscope'))/'research_v1'
+    def __init__(self,root=None):
+        self.root=Path(root) if root is not None else Path(os.environ['GRANTSCOPE_RESEARCH_CACHE']) if os.environ.get('GRANTSCOPE_RESEARCH_CACHE') else Path(os.environ.get('GRANTSCOPE_DATA_DIR','.grantscope'))/'research_v1'
+        self.archive=None
+        archive_root=os.environ.get('GRANTSCOPE_RESEARCH_ARCHIVE_DIR')
+        configured_root=os.environ.get('GRANTSCOPE_RESEARCH_CACHE')
+        if archive_root and configured_root and self.root.resolve()==Path(configured_root).resolve():
+            from services.research_archive import EncryptedResearchArchive
+            if Path(archive_root).resolve()==self.root.resolve():
+                raise ValueError('Private research store and encrypted archive must be separate')
+            self.archive=EncryptedResearchArchive(archive_root,os.environ.get('GRANTSCOPE_RESEARCH_ARCHIVE_KEY'))
+
+    def _private(self,create=False):
+        if create:self.root.mkdir(mode=0o700,parents=True,exist_ok=True)
+        if self.root.is_symlink() or (self.root.exists() and (self.root.stat().st_mode & 0o777)!=0o700):
+            raise ValueError('Research cache directory must be private')
+
+    def _write_private(self,scope,records):
+        import tempfile
+        self._private(create=True)
+        fd,name=tempfile.mkstemp(prefix=scope+'.',suffix='.tmp',dir=self.root)
+        try:
+            with os.fdopen(fd,'w') as stream:
+                json.dump(records,stream,ensure_ascii=False);stream.flush();os.fsync(stream.fileno())
+            os.replace(name,self.root/(scope+'.json'))
+        finally:
+            if os.path.exists(name):os.unlink(name)
     def load(self,scope):
         if len(scope)!=64 or any(c not in '0123456789abcdef' for c in scope):raise ValueError('Invalid research scope')
+        self._private()
         path=self.root/(scope+'.json')
+        if path.is_symlink():raise ValueError('Research cache entry must not be a symlink')
+        if self.archive:
+            records=self.archive.load(scope)
+            if records is not None:
+                self._write_private(scope,records)
+                return records
         if not path.exists():return {}
         return json.loads(path.read_text())
     def save(self,scope,records):
@@ -355,12 +387,11 @@ class ResearchStore:
             elif old and old.get('prior_versions'):
                 updated['prior_versions']=old['prior_versions']
             merged[oid]=updated
-        self.root.mkdir(mode=0o700,parents=True,exist_ok=True)
-        if self.root.is_symlink() or (self.root.stat().st_mode & 0o777)!=0o700:raise ValueError('Research cache directory must be private')
-        fd=os.open(self.root/(scope+'.tmp'),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-        with os.fdopen(fd,'w') as stream:
-            json.dump(merged,stream,ensure_ascii=False);stream.flush();os.fsync(stream.fileno())
-        os.replace(self.root/(scope+'.tmp'),self.root/(scope+'.json'))
+        self._private(create=True)
+        # Persist authenticated ciphertext before acknowledging this save. A failed
+        # backup must fail the research action before its next paid request.
+        if self.archive:self.archive.save(scope,merged)
+        self._write_private(scope,merged)
 
 
 def request_for_candidate(agency,project,candidate,*,mode='project_first',profile=None):
