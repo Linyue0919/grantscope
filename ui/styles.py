@@ -149,6 +149,17 @@ a { color: var(--gs-navy); }
 .st-key-inlinelink_lower_browse [data-testid="stPageLink-NavLink"] p { font-size: 13px; }
 .st-key-brief_meta_row button[kind="tertiary"] { min-height: 28px; font-size: 13px; padding: 0 4px; }
 .st-key-brief_meta_row button[kind="tertiary"] p { font-size: 13px; }
+/* Agency menu: compact left-aligned list */
+.st-key-agencymenu button { justify-content: flex-start !important; text-align: left; min-height: 34px;
+  text-decoration: none !important; padding: 4px 8px !important; border-radius: 6px; }
+.st-key-agencymenu button p { color: var(--gs-text) !important; font-size: 14px; font-weight: 500; text-align: left; }
+.st-key-agencymenu button:hover { background: var(--gs-tint) !important; }
+.st-key-agencymenu button > div, .st-key-agencymenu button [data-testid="stMarkdownContainer"] { justify-content: flex-start !important; text-align: left !important; width: 100%; }
+.st-key-agencymenu button:disabled { background: var(--gs-tint) !important; opacity: 1; }
+.st-key-agencymenu button:disabled p { color: var(--gs-navy) !important; font-weight: 700; }
+/* Detail panel stays in view while the brief scrolls */
+[data-testid="stColumn"]:has(.st-key-panel) { position: sticky; top: 4.2rem; align-self: flex-start;
+  max-height: calc(100vh - 5rem); overflow-y: auto; }
 </style>
 """
 

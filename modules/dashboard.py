@@ -134,10 +134,11 @@ def _render_header(agency, profile, result, min_days, compact):
                         unsafe_allow_html=True, width="content")
             with st.popover("Change agency", width="content"):
                 st.markdown('<p class="gs-eyebrow">Switch to</p>', unsafe_allow_html=True)
-                for name in list_profiled_agencies():
-                    label = agency_display_name(name) + ("  ·  Current" if name == agency else "")
-                    st.button(label, key=f"agency_{name}", on_click=_set_agency, args=(name,), type="tertiary",
-                              disabled=name == agency, width="stretch")
+                with st.container(key="agencymenu", gap=None):
+                    for name in list_profiled_agencies():
+                        label = agency_display_name(name) + ("  ·  Current" if name == agency else "")
+                        st.button(label, key=f"agency_{name}", on_click=_set_agency, args=(name,), type="tertiary",
+                                  disabled=name == agency, width="stretch")
         plan = (f'<a href="{profile["plan_url"]}" target="_blank" rel="noopener">public strategic plan ↗</a>'
                 if profile and profile.get("plan_url") else "public strategic plan")
         st.markdown(f'<p class="gs-scope">Open federal opportunities matched to your agency\'s {plan}.</p>',
