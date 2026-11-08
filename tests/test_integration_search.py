@@ -343,3 +343,23 @@ def test_real_pdf_false_positive_categories_do_not_become_potential_matches():
         today=date(2026,11,8),search_fn=lambda *args:hits,
         details_fn=lambda oid:details(types=(('00','State governments'),),desc=descriptions[oid]))
     assert not result['potentials'], [(r['id'],r['project_fit']) for r in result['potentials']]
+
+
+def test_official_late_synopsis_geography_and_rd_restrictions_hold_false_positives():
+    descriptions={
+        '700101':'Wetland restoration and monitoring. '+('Background information. '*120)+
+                 'Eligible activities 1 through 7 listed above must be carried out in the Gulf Coast region.',
+        '700102':'Restoration and monitoring. Trust Fund amounts are available to establish one or more Centers of Excellence through competitive subawards to nongovernmental entities and consortia in the Gulf Coast Region.',
+        '700103':'Restoration and monitoring. '+('Background information. '*120)+
+                 'ARPA-E funds applied research and development (R&D).',
+        '700104':'Wetland restoration and water quality monitoring on protected floodplain easements in North Carolina. Gulf Coast projects are also discussed, without restricting NC work.',
+    }
+    hits=[{'id':gid,'title':'Restoration and monitoring','oppStatus':'posted','closeDate':'12/01/2027'} for gid in descriptions]
+    result=search_potential_matches('Department of Environmental Quality',PROJECT,
+        search_fn=lambda *args:hits,details_fn=lambda gid:details(types=(('00','State governments'),),desc=descriptions[gid]),today=date(2026,11,8))
+    assert [r['id'] for r in result['potentials']]==['700104']
+    assert len(result['all_records'])==4
+    records={r['id']:r for r in result['all_records']}
+    assert all('Gulf Coast' in ' '.join(records[gid]['project_screening_reasons']) for gid in ['700101','700102'])
+    assert 'transformational research' in ' '.join(records['700103']['project_screening_reasons'])
+    assert all(r['eligibility']['status']=='likely_eligible' for r in records.values())

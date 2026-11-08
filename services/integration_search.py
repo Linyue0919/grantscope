@@ -197,6 +197,14 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         regions=record['eligibility'].get('region_flags',[])
         if any(region not in project.lower() for region in regions):reasons.append('Regional program scope does not support this NC project')
         scope=(detail.get('eligibility_text','')+' '+detail.get('description','')[:2000]).lower()
+        full_scope=(detail.get('eligibility_text','')+' '+detail.get('description','')).lower()
+        # Geography and funded-purpose conditions can follow a long synopsis.
+        # Hold these leads for this project, without inventing legal ineligibility.
+        gulf_required=(re.search(r'eligible activities[^.]{0,150}must be carried out in the gulf coast region',full_scope)
+                       or ('centers of excellence' in full_scope and
+                           'competitive subawards to nongovernmental entities and consortia in the gulf coast region' in full_scope))
+        if gulf_required and not re.search(r'gulf coast|gulf of mexico',positive_project_text(project),re.I):
+            reasons.append('Official funded activities require the Gulf Coast region; the proposed NC project does not establish that geography')
         if any(x in scope for x in ['western states','western united states','17 western']) and not any(x in project.lower() for x in ['western united states','western states']):
             reasons.append('Western-state program geography requires a supported NC route')
         whitelist=re.search(r'(?:one of the following states or territories|following states or territories|following states)\s*:\s*([^.]*)',detail.get('eligibility_text',''),re.I)
@@ -205,6 +213,8 @@ def search_potential_matches(agency,project,amount=None,earliest=None,*,search_f
         if re.search(r'research and development|basic and applied research|research proposals',detail.get('description','')[:800],re.I) and not re.search(r'research and development|experimental|prototype|novel|research study',positive_project_text(project),re.I):
             reasons.append('Research/development purpose is not established by the proposed implementation project')
         research_intent=bool(re.search(r'research and development|research study|clinical trial|experimental|prototype',positive_project_text(project),re.I))
+        if not research_intent and re.search(r'funds (?:applied research and development|transformational research)',full_scope):
+            reasons.append('Official funding purpose is applied or transformational research, not the proposed restoration implementation')
         if not research_intent and (re.search(r'clinical trial|services research|\b(?:R|U|P)[0-9]{2}\b',record['title'],re.I) or
             re.search(r'(?:purpose|objective).{0,180}(?:support|fund|conduct).{0,50}research',detail.get('description','')[:1200],re.I)):
             reasons.append('Research/clinical-study funding purpose does not support the proposed service delivery or implementation scope')
