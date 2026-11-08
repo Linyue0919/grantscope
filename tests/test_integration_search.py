@@ -92,6 +92,32 @@ def test_search_ai_failure_keeps_evidence_and_does_not_invent_fit():
     assert assessed["effort"]["level"] in {"unknown", "insufficient", "unclear", "fewer_found", "moderate", "higher"}
 
 
+def test_search_cards_render_shared_dashboard_assessment_fields():
+    result = screen()
+    lead = result["potentials"][0]
+    lead["relevance"]["ai"] = {
+        "status": "ok",
+        "score": 88,
+        "explanation": "Official water monitoring evidence supports the project.",
+        "evidence": [{"source_id": "D", "quote": "Official water monitoring evidence."}],
+    }
+    with patch("modules.integrated_search.search_potential_matches", return_value=result):
+        at = AppTest.from_string(
+            "from modules.integrated_search import show_search_screening\n"
+            "show_search_screening()"
+        ).run()
+        at.text_area(key="search_project").input(PROJECT)
+        at.button(key="search_submit").click().run()
+    assert not at.exception
+    rendered = "\n".join(
+        item.value for item in (*at.markdown, *at.caption)
+        if isinstance(item.value, str)
+    )
+    assert "Shared GPT-4o assessment 88/100" in rendered
+    assert "Official water monitoring evidence supports the project." in rendered
+    assert "Application Effort:" in rendered
+
+
 def test_deep_action_only_researches_clicked_id_and_reuses_cache(tmp_path):
     result=screen();provider=Provider();cache=ResearchStore(tmp_path/'cache')
     run=research_one_candidate(result,'910001',provider,cache=cache,evidence_client=Evidence())

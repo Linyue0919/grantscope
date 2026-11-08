@@ -69,15 +69,26 @@ def show_search_screening():
                 if fit.get('supported_for_screening') else
                 'Not established from the official summary; further notice review is required.'
             ))
-            ai_fit=record.get('relevance', {}).get('ai') or {}
-            st.write('**Strategic Fit:** '+(
-                f"GPT-4o assessment {ai_fit.get('score')}/100"
-                if ai_fit.get('status') == 'ok' and isinstance(ai_fit.get('score'), int)
-                else 'Not AI assessed or evidence was insufficient.'
+            relevance=record.get('relevance') or {}
+            ai_fit=relevance.get('ai') or {}
+            ai_score=ai_fit.get('score')
+            strategic_score=relevance.get('fit_score')
+            st.write('**Project Fit:** '+(
+                f"Shared GPT-4o assessment {ai_score}/100"
+                if ai_fit.get('status') == 'ok' and isinstance(ai_score, int)
+                else 'Not AI assessed or official evidence was insufficient.'
             ))
-            st.write('**Can we apply?** '+record['eligibility']['label'])
+            st.write('**Strategic Fit:** '+(
+                f"{strategic_score}/100 from verified agency goals"
+                if isinstance(strategic_score, int)
+                else 'Unavailable; no verified agency goals were supplied.'
+            ))
+            st.write('**Can we apply?** '+record['eligibility']['summary'])
             activities=', '.join(m['activity'] for m in record['project_fit']['matches'])
-            st.write('**Should we apply?** Official summary contains project activity evidence: '+activities+'. Allowable activities still need NOFO verification.')
+            if ai_fit.get('status') == 'ok' and ai_fit.get('explanation'):
+                st.write('**Should we apply?** '+ai_fit['explanation'])
+            else:
+                st.write('**Should we apply?** Official summary contains project activity evidence: '+activities+'. Allowable activities still need NOFO verification.')
             st.write('**Can we act in time?** '+('Rolling intake: confirm funds and current intake; no future closing date is established.' if record.get('rolling_intake') else record['urgency']['label']+'. Intermediate deadlines and preparation time are not yet verified.'))
             st.caption('Official funding: '+record['funding']['display'])
             effort=record.get('effort') or assess_effort(result['details'].get(oid))
@@ -97,6 +108,13 @@ def show_search_screening():
                 st.write(record['project_fit']['basis']);st.write(record['eligibility']['reasoning'])
                 if record['eligibility'].get('quote'):st.text(record['eligibility']['quote'])
                 st.text((result['details'].get(oid) or {}).get('description',''))
+                if ai_fit.get('evidence'):
+                    st.write('**Shared AI evidence validation**')
+                    for evidence in ai_fit['evidence']:
+                        if evidence.get('quote'):
+                            st.text(evidence['quote'])
+                        if evidence.get('url'):
+                            st.link_button('Official AI evidence source',evidence['url'])
                 if record.get('purpose_source'):
                     st.text(record['purpose_source']['quote']);st.link_button('Official notice — screened activity evidence',record['purpose_source']['url'])
                 if record.get('rolling_intake'):st.text((result['details'].get(oid) or {}).get('deadline_note',''))
