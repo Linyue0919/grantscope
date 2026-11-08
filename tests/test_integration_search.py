@@ -422,3 +422,28 @@ def test_unrelated_incarceration_and_juvenile_justice_populations_are_held():
                for reason in result['all_records'][0]['project_screening_reasons'])
     assert any('juvenile-justice' in reason
                for reason in result['all_records'][1]['project_screening_reasons'])
+
+
+def test_forecast_and_unverified_lists_do_not_rescue_population_mismatch():
+    project=('Expand rural North Carolina community substance use and mental health '
+             'services through counseling, prevention and recovery support.')
+    hits=[
+        {'id':'364201','title':'Residential Substance Abuse Treatment for State Prisoners',
+         'oppStatus':'forecasted','closeDate':'12/01/2027'},
+        {'id':'364202','title':'Residential Substance Abuse Treatment for State Prisoners',
+         'oppStatus':'posted'},
+    ]
+    def official(oid):
+        d=details(desc='Support substance use treatment for state prisoners in jails '
+                       'and community-based recovery support throughout the reentry process.')
+        if oid=='364202':
+            d.update(opportunity_status='POSTED',close_date_text=None)
+        return d
+    result=search_potential_matches('Department of Health and Human Services',project,
+        search_fn=lambda *args:hits,details_fn=official,today=date(2026,11,8))
+    assert not result['potentials']
+    assert not result['forecasted']
+    assert not result['needs_verification']
+    assert all(any('incarcerated or reentry' in reason
+                   for reason in row['project_screening_reasons'])
+               for row in result['all_records'])
