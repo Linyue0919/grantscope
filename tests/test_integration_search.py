@@ -245,7 +245,8 @@ def test_deep_action_only_researches_clicked_id_and_reuses_cache(tmp_path):
     with pytest.raises(ValueError):research_one_candidate(result,'910003',provider,cache=cache)
 
 
-def test_streamlit_immediate_matches_no_provider_until_deep_action_save_and_rerun(tmp_path):
+def test_streamlit_immediate_matches_no_provider_until_deep_action_save_and_rerun(tmp_path, monkeypatch):
+    monkeypatch.setenv('GRANTSCOPE_ENABLE_SEARCH_DEEP_RESEARCH', '1')
     store=LocalGrantStore(tmp_path/'saved.json');provider=Provider()
     with patch('modules.integrated_search.get_grants',side_effect=lambda *a:HITS),\
          patch('modules.integrated_search.fetch_opportunity_details',side_effect=detail),\
@@ -367,7 +368,8 @@ def test_failed_research_retries_only_on_explicit_action(tmp_path):
     assert len(good.calls)==2 and retried['records']['910001']['state']=='RESEARCHED_AND_VALIDATED'
 
 
-def test_streamlit_failed_deep_action_can_be_explicitly_retried_without_autocalls(tmp_path):
+def test_streamlit_failed_deep_action_can_be_explicitly_retried_without_autocalls(tmp_path, monkeypatch):
+    monkeypatch.setenv('GRANTSCOPE_ENABLE_SEARCH_DEEP_RESEARCH', '1')
     provider=Provider();complete=provider.complete;fail=[True]
     def once(*args,**kwargs):
         if fail[0]:
@@ -392,3 +394,31 @@ def test_streamlit_failed_deep_action_can_be_explicitly_retried_without_autocall
         at.run();assert configured.call_count==1
         at.button(key=key).click().run()
         assert not at.exception and configured.call_count==2 and len(provider.calls)==2
+
+
+def test_unrelated_incarceration_and_juvenile_justice_populations_are_held():
+    project=('Expand rural North Carolina community substance use and mental health services '
+             'through counseling, prevention, treatment referrals and recovery support.')
+    hits=[
+        {'id':'364043','title':'Residential Substance Abuse Treatment for State Prisoners',
+         'oppStatus':'posted','closeDate':'12/01/2027'},
+        {'id':'364040','title':'Expanding Youth Access to Community-Based Treatment',
+         'oppStatus':'posted','closeDate':'12/01/2027'},
+    ]
+    def official(oid):
+        description=(
+            'Support substance use disorder treatment for state prisoners in jails '
+            'and continuity of care throughout the reentry process.'
+            if oid=='364043' else
+            'Support mental health and substance use treatment for youth involved '
+            'in the juvenile justice system through community-based treatment.'
+        )
+        return details(desc=description)
+    result=search_potential_matches('Department of Health and Human Services',project,
+                                    search_fn=lambda *args:hits,details_fn=official,
+                                    today=date(2026,11,8))
+    assert not result['potentials']
+    assert any('incarcerated or reentry' in reason
+               for reason in result['all_records'][0]['project_screening_reasons'])
+    assert any('juvenile-justice' in reason
+               for reason in result['all_records'][1]['project_screening_reasons'])
