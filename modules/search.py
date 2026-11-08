@@ -888,5 +888,5 @@ def show_search():
     import os
     if os.environ.get('GRANTSCOPE_LEGACY_SEARCH')=='1':
         return _show_legacy_search()
-    from modules.search_workflow import show_one_click_search
-    return show_one_click_search()
+    from modules.integrated_search import show_search_screening
+    return show_search_screening()

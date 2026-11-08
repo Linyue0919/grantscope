@@ -177,7 +177,7 @@ def test_streamlit_multi_grant_dynamic_research_and_save_without_a_live_call(tmp
          patch('modules.search_workflow.LocalGrantStore',return_value=store),patch('modules.search_workflow.ResearchStore',return_value=research_store),\
          patch('modules.search_workflow.configured_provider',return_value=provider),patch('services.research_engine.OfficialEvidenceClient',return_value=Evidence()),\
          patch('services.research_priority.batch_prioritize',side_effect=triage),patch('modules.search.prepare_ai_recommendations') as legacy_paid:
-        at=AppTest.from_string('from modules.search import show_search\nshow_search()').run()
+        at=AppTest.from_string('from modules.search_workflow import show_one_click_search as show_search\nshow_search()').run()
         assert not at.checkbox and not at.text_input
         at.selectbox(key='search_agency').select('Department of Commerce').run()
         at.text_area(key='search_project').input('Build rural broadband infrastructure for North Carolina residents to improve reliable internet access.')

@@ -1,0 +1,737 @@
+{
+  "schema_version": "1.0",
+  "source_directory": "https://www.osbm.nc.gov/operational-excellence/strategic-planning/agency-strategic-plans",
+  "retrieved_on": "2026-11-07",
+  "method": "Goal statements are verbatim quotes from each agency's official strategic plan PDF linked from the NC OSBM directory. 'page' is the 1-based PDF page that contains the quote. 'terms' are matching phrases chosen by the GrantScope team; every term appears verbatim (allowing a plural ending) on the listed evidence_pages. Internal-operations goals (for example, employee recruitment or work environment) are omitted because they rarely correspond to external federal grants. Re-verify with: python scripts/verify_agency_plans.py",
+  "agencies": [
+    {
+      "name": "Department of Environmental Quality",
+      "short_name": "DEQ",
+      "plan_period": "2025–2029",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-deq/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "deq-1",
+          "label": "Goal 1 – Environmental and Public Health Protection",
+          "quote": "Protect public health by setting and implementing science-based standards and by providing technical, compliance, permitting and financial assistance to residents, communities, businesses, and local governments to meet or exceed requirements, prevent pollution, and improve public health.",
+          "page": 4,
+          "evidence_pages": [
+            4,
+            5
+          ],
+          "terms": [
+            "water quality",
+            "drinking water",
+            "wastewater",
+            "stormwater",
+            "air quality",
+            "water supply",
+            "water infrastructure",
+            "coastal",
+            "marine",
+            "pollution",
+            "environmental stewardship"
+          ]
+        },
+        {
+          "goal_id": "deq-2",
+          "label": "Goal 2 – Community Restoration and Resilience",
+          "quote": "support and accelerate the long-term recovery of communities devastated by Hurricane Helene and other natural disasters, and lead state efforts to strengthen communities' resiliency to future disasters.",
+          "page": 6,
+          "evidence_pages": [
+            6,
+            7
+          ],
+          "terms": [
+            "hurricane helene",
+            "natural disasters",
+            "natural hazards",
+            "extreme weather",
+            "flood resilience",
+            "resilience",
+            "resiliency"
+          ]
+        },
+        {
+          "goal_id": "deq-3",
+          "label": "Goal 3 – Forever Chemicals",
+          "quote": "Protect North Carolina's people and natural resources from exposure to PFAS and other forever chemicals, using a transparent, collaborative, and science-based decision-making process.",
+          "page": 8,
+          "evidence_pages": [
+            8,
+            9
+          ],
+          "terms": [
+            "pfas",
+            "forever chemicals",
+            "contamination",
+            "remediation",
+            "private wells",
+            "groundwater",
+            "drinking water"
+          ]
+        },
+        {
+          "goal_id": "deq-4",
+          "label": "Goal 4 – Environmental Infrastructure",
+          "quote": "Strengthen North Carolina's infrastructure through thoughtful and strategic investments.",
+          "page": 10,
+          "evidence_pages": [
+            10
+          ],
+          "terms": [
+            "environmental infrastructure",
+            "infrastructure funding",
+            "utilities",
+            "distressed"
+          ]
+        },
+        {
+          "goal_id": "deq-5",
+          "label": "Goal 5 – Community Engagement and Public Participation",
+          "quote": "Ensure the meaningful involvement and fair treatment of all people with respect to the development, implementation, and enforcement of environmental laws, health safeguards, and policies.",
+          "page": 11,
+          "evidence_pages": [
+            11
+          ],
+          "terms": [
+            "community engagement",
+            "public participation",
+            "language access",
+            "economically disadvantaged"
+          ]
+        },
+        {
+          "goal_id": "deq-6",
+          "label": "Goal 6 – Modernize DEQ",
+          "quote": "Modernize processes and foster innovation to enhance efficiency in services, increase transparency, and strengthen partnerships to better serve all stakeholders and the general public.",
+          "page": 12,
+          "evidence_pages": [
+            12
+          ],
+          "terms": [
+            "permitting",
+            "digital solutions",
+            "cyber security",
+            "technical assistance"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Department of Transportation",
+      "short_name": "NCDOT",
+      "plan_period": "2025–2029",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-dot/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "ncdot-1",
+          "label": "Goal – Recover the transportation network after emergencies",
+          "quote": "Recover the transportation network after emergencies",
+          "page": 5,
+          "evidence_pages": [
+            5
+          ],
+          "terms": [
+            "transportation infrastructure",
+            "transportation",
+            "disaster recovery",
+            "hurricane helene",
+            "extreme weather"
+          ]
+        },
+        {
+          "goal_id": "ncdot-2",
+          "label": "Goal – Provide a safe and efficient transportation system",
+          "quote": "Provide a safe and efficient transportation system in North Carolina",
+          "page": 5,
+          "evidence_pages": [
+            5,
+            6,
+            7
+          ],
+          "terms": [
+            "highway safety",
+            "transportation",
+            "roadway",
+            "fatalities",
+            "serious injuries",
+            "non-motorized",
+            "vision zero",
+            "rail",
+            "ferry",
+            "national highway system"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Department of Health and Human Services",
+      "short_name": "NCDHHS",
+      "plan_period": "2026–2030",
+      "plan_url": "https://www.osbm.nc.gov/dhhs-2026-2030-strategic-plan/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "ncdhhs-1",
+          "label": "Goal 1 – Access to Care",
+          "quote": "Support North Carolinians' ability to safely, easily and fully access the services, programs and systems of care of NCDHHS and our partners.",
+          "page": 4,
+          "evidence_pages": [
+            4
+          ],
+          "terms": [
+            "access to health",
+            "human services",
+            "affordable care",
+            "literacy barriers"
+          ]
+        },
+        {
+          "goal_id": "ncdhhs-2",
+          "label": "Goal 2 – Whole Person Well-Being",
+          "quote": "Improve the well-being of North Carolinians by delivering comprehensive, high-quality services that address complex factors shaping outcomes for individuals and families.",
+          "page": 5,
+          "evidence_pages": [
+            5
+          ],
+          "terms": [
+            "mental health",
+            "substance use",
+            "developmental disability",
+            "traumatic brain injury",
+            "healthy food",
+            "drivers of health"
+          ]
+        },
+        {
+          "goal_id": "ncdhhs-3",
+          "label": "Goal 3 – Transform and Modernize Health Care",
+          "quote": "Transform North Carolina's health care ecosystem by modernizing delivery, strengthening community and rural care, and optimizing strategic partnerships to expand access, improve outcomes and manage costs.",
+          "page": 6,
+          "evidence_pages": [
+            6
+          ],
+          "terms": [
+            "health care",
+            "rural health",
+            "rural care",
+            "health outcomes",
+            "complex needs"
+          ]
+        },
+        {
+          "goal_id": "ncdhhs-4",
+          "label": "Goal 4 – Sustainable Workforce",
+          "quote": "Develop a skilled workforce that supports North Carolinians' health and well-being through training, career pathways and innovative strategies to attract and retain talent.",
+          "page": 7,
+          "evidence_pages": [
+            7
+          ],
+          "terms": [
+            "career pathways",
+            "workforce",
+            "employment barriers"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Department of Public Safety",
+      "short_name": "DPS",
+      "plan_period": "2025–2029",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-dps/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "dps-3",
+          "label": "Goal 3 – Strengthen our comprehensive approach to public safety",
+          "quote": "Strengthen our comprehensive approach to public safety",
+          "page": 4,
+          "evidence_pages": [
+            4,
+            12,
+            13,
+            14
+          ],
+          "terms": [
+            "public safety",
+            "emergency preparedness",
+            "emergency management",
+            "violence prevention",
+            "juvenile",
+            "law enforcement",
+            "disaster",
+            "prevention and intervention"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Department of Information Technology",
+      "short_name": "NCDIT",
+      "plan_period": "2025–2029",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-ncdit/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "ncdit-1",
+          "label": "Goal 1 – Reliable and accessible technology and data services",
+          "quote": "Ensure that the state's services are supported by reliable and accessible technology and data services",
+          "page": 6,
+          "evidence_pages": [
+            6,
+            7
+          ],
+          "terms": [
+            "data services",
+            "cybersecurity"
+          ]
+        },
+        {
+          "goal_id": "ncdit-2",
+          "label": "Goal 2 – Future-ready government through AI and emerging technologies",
+          "quote": "Build a future-ready state with smarter, faster, trusted, and more responsive government operations through the strategic deployment of AI and emerging technologies.",
+          "page": 7,
+          "evidence_pages": [
+            7,
+            8,
+            9
+          ],
+          "terms": [
+            "artificial intelligence",
+            "emerging technologies"
+          ]
+        },
+        {
+          "goal_id": "ncdit-3",
+          "label": "Goal 3 – Statewide IT ecosystem",
+          "quote": "Foster a statewide IT ecosystem where agencies, counties, boards, and community institutions operate as interconnected partners",
+          "page": 9,
+          "evidence_pages": [
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "terms": [
+            "broadband",
+            "digital literacy",
+            "cybersecurity"
+          ]
+        },
+        {
+          "goal_id": "ncdit-4",
+          "label": "Goal 4 – Protect information assets",
+          "quote": "Protect North Carolina's information assets and empower government to operate with trust, agility, and confidence.",
+          "page": 13,
+          "evidence_pages": [
+            13,
+            14
+          ],
+          "terms": [
+            "cybersecurity",
+            "critical infrastructure",
+            "personal information"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Department of Natural and Cultural Resources",
+      "short_name": "DNCR",
+      "plan_period": "2025–2029",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-dncr/open",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "dncr-1",
+          "label": "Goal 1 – Educational excellence and workforce pathways",
+          "quote": "Expand and advance educational excellence and innovation throughout DNCR's sites and programs and support workforce pathways for our fields of work.",
+          "page": 7,
+          "evidence_pages": [
+            7,
+            8
+          ],
+          "terms": [
+            "educators",
+            "professional development",
+            "lifelong learning",
+            "digital access",
+            "workforce"
+          ]
+        },
+        {
+          "goal_id": "dncr-2",
+          "label": "Goal 2 – Strengthen local economies",
+          "quote": "Strengthen local economies by uplifting DNCR sites and services as community anchors.",
+          "page": 8,
+          "evidence_pages": [
+            8,
+            9
+          ],
+          "terms": [
+            "arts",
+            "music",
+            "history",
+            "libraries",
+            "outdoor recreation",
+            "broadband",
+            "digital skills"
+          ]
+        },
+        {
+          "goal_id": "dncr-3",
+          "label": "Goal 3 – Preserve and expand access to natural and cultural resources",
+          "quote": "Preserve, enhance, and expand access to North Carolina's natural and cultural resources to reflect and serve all.",
+          "page": 6,
+          "evidence_pages": [
+            6,
+            9,
+            10
+          ],
+          "terms": [
+            "capital projects",
+            "green spaces",
+            "restoration",
+            "digital resource",
+            "historic"
+          ]
+        },
+        {
+          "goal_id": "dncr-5",
+          "label": "Goal 5 – Helene recovery and climate resilience",
+          "quote": "Support western North Carolina's recovery from Hurricane Helene and integrate climate resilience",
+          "page": 12,
+          "evidence_pages": [
+            12
+          ],
+          "terms": [
+            "hurricane helene",
+            "climate resilience",
+            "working lands",
+            "disasters"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NC Housing Finance Agency",
+      "short_name": "NCHFA",
+      "plan_period": "2025–2029",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-hfa/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "nchfa-1",
+          "label": "Goal 1 – Housing options",
+          "quote": "Meet the housing needs of North Carolinians through a variety of housing options",
+          "page": 5,
+          "evidence_pages": [
+            5
+          ],
+          "terms": [
+            "housing",
+            "down payment assistance",
+            "rental",
+            "rehabilitation",
+            "rental assistance"
+          ]
+        },
+        {
+          "goal_id": "nchfa-2",
+          "label": "Goal 2 – Partnerships",
+          "quote": "Partner with other organizations to accomplish a variety of housing strategies",
+          "page": 5,
+          "evidence_pages": [
+            5
+          ],
+          "terms": [
+            "housing strategies"
+          ]
+        },
+        {
+          "goal_id": "nchfa-3",
+          "label": "Goal 3 – New funding resources",
+          "quote": "Identify and tap into new funding resources while maintaining and strengthening existing funding streams",
+          "page": 5,
+          "evidence_pages": [
+            5,
+            6
+          ],
+          "terms": [
+            "funding sources",
+            "funding resources"
+          ]
+        },
+        {
+          "goal_id": "nchfa-4",
+          "label": "Goal 4 – Sustainable building",
+          "quote": "Support and encourage sustainable building practices",
+          "page": 6,
+          "evidence_pages": [
+            6
+          ],
+          "terms": [
+            "green building",
+            "preservation",
+            "sustainable building",
+            "multi-family"
+          ]
+        },
+        {
+          "goal_id": "nchfa-7",
+          "label": "Goal 7 – Underserved communities",
+          "quote": "Actively reach out to underserved groups and communities to improve access and utilization of our programs",
+          "page": 7,
+          "evidence_pages": [
+            7
+          ],
+          "terms": [
+            "underserved"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wildlife Resources Commission",
+      "short_name": "NCWRC",
+      "plan_period": "2023–2025",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategicplan-wrc/open",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "ncwrc-1",
+          "label": "Goal 1 – Participation in wildlife-related activities",
+          "quote": "All North Carolina citizens have the opportunity for safe and readily available participation in hunting, fishing, boating and other wildlife-related activities.",
+          "page": 8,
+          "evidence_pages": [
+            8
+          ],
+          "terms": [
+            "hunting",
+            "fishing",
+            "boating",
+            "public access",
+            "waterways"
+          ]
+        },
+        {
+          "goal_id": "ncwrc-3",
+          "label": "Goal 3 – Conserve fish and wildlife resources",
+          "quote": "Conserve and enhance the abundance and diversity of the fish and wildlife resources of North Carolina.",
+          "page": 9,
+          "evidence_pages": [
+            9
+          ],
+          "terms": [
+            "wildlife action plan",
+            "species",
+            "habitat",
+            "land acquisition",
+            "conservation",
+            "restoration"
+          ]
+        },
+        {
+          "goal_id": "ncwrc-4",
+          "label": "Goal 4 – Working lands and habitats",
+          "quote": "sustaining working lands, conserving wildlife habitats and species diversity",
+          "page": 9,
+          "evidence_pages": [
+            9
+          ],
+          "terms": [
+            "working lands",
+            "wildlife habitats",
+            "species diversity"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Department of Commerce",
+      "short_name": "Commerce",
+      "plan_period": "FY2021–2023",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-doc/download?attachment",
+      "applicant_categories": [
+        "State governments"
+      ],
+      "status": "profiled",
+      "goals": [
+        {
+          "goal_id": "commerce-1",
+          "label": "Goal 1 – Support the growth of North Carolina's economy",
+          "quote": "To support the growth of North Carolina's economy.",
+          "page": 11,
+          "evidence_pages": [
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "terms": [
+            "economic development",
+            "rural infrastructure",
+            "distressed",
+            "workforce",
+            "tourism",
+            "community development block grant",
+            "appalachian regional commission",
+            "incentives"
+          ]
+        }
+      ]
+    }
+  ],
+  "unprofiled_agencies": [
+    {
+      "name": "Department of Public Schools",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-dpi/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "State Board of Education",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-board-education/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "NC Community College System",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-ncccs/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "University of North Carolina System",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-unc/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Office of State Budget and Management",
+      "plan_url": "https://www.osbm.nc.gov/documents/osbmstratplan25-2920250916/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Military and Veterans Affairs",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-dmva/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Office of State Human Resources",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-oshr/open",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Secretary of State",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-secretary-state/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Office of the State Auditor",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-osa/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of State Treasurer",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-dst/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Insurance",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-doi/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Office of State Fire Marshal",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-osfm/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Administration",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-doa/open",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Office of the State Controller",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-osc/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Revenue",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-dor/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "State Board of Elections",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-sbe/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Office of Administrative Hearings",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-oah/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Judicial Branch - Indigent Defense",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-ids/open",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Adult Correction",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-dac/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Justice",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-doj/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "State Bureau of Investigation",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-sbi/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "State Highway Patrol",
+      "plan_url": "https://www.osbm.nc.gov/strategic-plan-shp/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Agriculture and Consumer Services",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-dacs/open",
+      "status": "plan_available_goals_not_extracted"
+    },
+    {
+      "name": "Department of Labor",
+      "plan_url": "https://www.osbm.nc.gov/documents/files/strategic-plan-dol/download?attachment",
+      "status": "plan_available_goals_not_extracted"
+    }
+  ]
+}

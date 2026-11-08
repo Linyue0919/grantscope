@@ -99,6 +99,6 @@ def show_profile():
          "This list covers the entries on the OSBM strategic-plan directory, not every possible NC public body. "
         "Adding an agency does not mean its strategic plan has been ingested or that "
         "its grant eligibility has been verified. Preferences last for this Streamlit "
-        "session only. Dashboard integration is pending; email "
+        "session only. Dashboard uses the selected agency and optional priorities; email "
         "notifications are not active."
     )

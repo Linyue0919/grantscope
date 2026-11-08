@@ -3,7 +3,7 @@ import streamlit as st
 from modules.search import show_search
 from modules.profile import show_profile
 from modules.my_grants import show_my_grants
-from services.grant_store import LocalGrantStore
+from modules.dashboard import show_dashboard
 
 st.set_page_config(
     page_title="GrantScope",
@@ -22,9 +22,7 @@ page = st.sidebar.radio(
 )
 
 if page == "Dashboard":
-    st.header("Dashboard")
-    st.caption(f"Saved grants: {len(LocalGrantStore().list_records())}")
-    st.info("Dashboard is under development.")
+    show_dashboard()
 
 elif page == "Search":
     show_search()
