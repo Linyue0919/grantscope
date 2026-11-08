@@ -1,0 +1,1817 @@
+{
+  "deq-before": {
+    "stats": {
+      "unique_candidates": 416,
+      "actionable_candidates": 416,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 41,
+      "low_evidence": 235,
+      "upcoming": 6,
+      "upcoming_low_evidence": 119,
+      "likely_ineligible": 6,
+      "screened_out": 9,
+      "screened_out_by_reason": {
+        "not_eligible": 5,
+        "closed": 4
+      },
+      "capped_queries": 5,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "watershed restoration",
+        "source": "user",
+        "retrieved": 72,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "water quality",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "water monitoring",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "coastal restoration",
+        "source": "user",
+        "retrieved": 93,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "hurricane helene",
+        "source": "deq-2",
+        "retrieved": 14,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "forever chemicals",
+        "source": "deq-3",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "environmental infrastructure",
+        "source": "deq-4",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "community engagement",
+        "source": "deq-5",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [
+      {
+        "id": "364144",
+        "title": "Landscape Scale Restoration Grant Program for Non-Federal Lands",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-01-26",
+          "days_left": 80
+        },
+        "funding": {
+          "display": "$100,000 – $600,000 per award",
+          "floor": 100000.0,
+          "ceiling": 600000.0,
+          "estimated_total": 11340000.0,
+          "number_of_awards": 30.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $11,340,000 and about 30 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": true
+        },
+        "scope_requirement": "Eligible Lands : LSR projects must be conducted on rural non-industrial private forest land, and/or rural state or local government forest land.",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "363920",
+        "title": "Easement Restoration and Stewardship",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2026-11-19",
+          "days_left": 12
+        },
+        "funding": {
+          "display": "$250,000 – $5,000,000 per award",
+          "floor": 250000.0,
+          "ceiling": 5000000.0,
+          "estimated_total": null,
+          "number_of_awards": 4.0,
+          "reported": true,
+          "note": "Grants.gov lists about 4 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "The opportunities associated with this NOFO are for lands protected through the Wetland Reserve Easements (WRE) component of the Agricultural Conservation Easement Program (ACEP) and the Floodplain Easement (FPE) component of the Emergency Watershed Protection Program (EWPP).",
+        "purpose_source": null,
+        "rolling_intake": null
+      }
+    ],
+    "reasons": {
+      "Official eligible-location list does not include the proposed North Carolina location": 3,
+      "Direct applicant route is excluded, unlikely, or not checked; no supported alternative route established": 349,
+      "Special applicant or affiliation route is not established for the selected agency": 39,
+      "Regional program scope does not support this NC project": 27,
+      "Western-state program geography requires a supported NC route": 2,
+      "Insufficient specific project-activity evidence": 403,
+      "Not verified as currently open with a closing date": 147,
+      "Research/development purpose is not established by the proposed implementation project": 3,
+      "Closing date is before the selected threshold": 4
+    }
+  },
+  "ncdot-before": {
+    "stats": {
+      "unique_candidates": 452,
+      "actionable_candidates": 452,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 5,
+      "low_evidence": 303,
+      "upcoming": 3,
+      "upcoming_low_evidence": 128,
+      "likely_ineligible": 3,
+      "screened_out": 10,
+      "screened_out_by_reason": {
+        "not_eligible": 5,
+        "closed": 5
+      },
+      "capped_queries": 7,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "flood resilience",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "stormwater mitigation",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "upgrade flood-prone roads undersized",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "transportation infrastructure",
+        "source": "ncdot-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "highway safety",
+        "source": "ncdot-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "disaster recovery",
+        "source": "ncdot-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "serious injuries",
+        "source": "ncdot-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "hurricane helene",
+        "source": "ncdot-1",
+        "retrieved": 14,
+        "cap_reached": false,
+        "error": null
+      }
+    ],
+    "potentials": [
+      {
+        "id": "363920",
+        "title": "Easement Restoration and Stewardship",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2026-11-19",
+          "days_left": 12
+        },
+        "funding": {
+          "display": "$250,000 – $5,000,000 per award",
+          "floor": 250000.0,
+          "ceiling": 5000000.0,
+          "estimated_total": null,
+          "number_of_awards": 4.0,
+          "reported": true,
+          "note": "Grants.gov lists about 4 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "The opportunities associated with this NOFO are for lands protected through the Wetland Reserve Easements (WRE) component of the Agricultural Conservation Easement Program (ACEP) and the Floodplain Easement (FPE) component of the Emergency Watershed Protection Program (EWPP).",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "364169",
+        "title": "RESTORE Act Direct Component - Non-Construction Activities",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-31",
+          "days_left": 358
+        },
+        "funding": {
+          "display": "Up to $120,153,261 per award",
+          "floor": null,
+          "ceiling": 120153261.0,
+          "estimated_total": null,
+          "number_of_awards": 10.0,
+          "reported": true,
+          "note": "Grants.gov lists about 10 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "This announcement also includes planning assistance needed to prepare the Multiyear Implementation Plan (Multiyear Plan) required by the RESTORE Act.",
+        "purpose_source": null,
+        "rolling_intake": null
+      }
+    ],
+    "reasons": {
+      "Direct applicant route is excluded, unlikely, or not checked; no supported alternative route established": 384,
+      "Insufficient specific project-activity evidence": 449,
+      "Not verified as currently open with a closing date": 162,
+      "Special applicant or affiliation route is not established for the selected agency": 26,
+      "Regional program scope does not support this NC project": 17,
+      "Research/development purpose is not established by the proposed implementation project": 4,
+      "Closing date is before the selected threshold": 5,
+      "Western-state program geography requires a supported NC route": 1
+    }
+  },
+  "ncdhhs-before": {
+    "stats": {
+      "unique_candidates": 480,
+      "actionable_candidates": 480,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 32,
+      "low_evidence": 216,
+      "upcoming": 27,
+      "upcoming_low_evidence": 193,
+      "likely_ineligible": 0,
+      "screened_out": 12,
+      "screened_out_by_reason": {
+        "closed": 10,
+        "not_eligible": 2
+      },
+      "capped_queries": 8,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "public health",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "health preparedness",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "expand access rural mental",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "workforce development",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "access to health",
+        "source": "ncdhhs-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "mental health",
+        "source": "ncdhhs-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "health care",
+        "source": "ncdhhs-3",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "career pathways",
+        "source": "ncdhhs-4",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [
+      {
+        "id": "357422",
+        "title": "Pilot Hybrid Effectiveness-Implementation Trials for Mental Health Interventions (R01  Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-15",
+          "days_left": 342
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "Pilot Effectiveness Trials for Treatment, Preventive and Services Interventions (R01 Clinical Trial Required).",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357946",
+        "title": "Innovative Mental Health Services Research Not Involving Clinical Trials (R01 Clinical Trials Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357947",
+        "title": "Innovative Pilot Mental Health Services Research Not Involving Clinical Trials (R34 Clinical Trial Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Up to $225,000 per award",
+          "floor": null,
+          "ceiling": 225000.0,
+          "estimated_total": 225000.0,
+          "number_of_awards": null,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $225,000. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357421",
+        "title": "Full-Scale Hybrid Effectiveness-Implementation Trials for Mental Health Interventions (R01 - Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-15",
+          "days_left": 342
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "Clinical Trials to Test the Effectiveness of Treatment, Preventive, and Services Interventions (R01 Clinical Trial Required).",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "356690",
+        "title": "Interventions to expand cancer screening and preventive services to ADVANCE health in populations that experience health disparities (R01, Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-01-07",
+          "days_left": 61
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357434",
+        "title": "Effectiveness Trials to Test Mental Health System Interventions (R61/R33 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-15",
+          "days_left": 342
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357524",
+        "title": "Accelerating Solutions to Improve Access and Quality of Empirically-Supported Practices for Youth Mental Health (R01 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-01-07",
+          "days_left": 61
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "356924",
+        "title": "Effectiveness Trials for Post-Acute Interventions and Services to Optimize Longer-term Outcomes (R01 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357573",
+        "title": "Pilot Health Services and Economic Research on the Treatment of Drug, Alcohol, and Tobacco Use Disorders (R34 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-27",
+          "days_left": 354
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "356923",
+        "title": "Pilot Effectiveness Trials for Post-Acute Interventions and Services to Optimize Longer-term Outcomes (R01 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "361204",
+        "title": "Pilot and Feasibility Studies in Preparation for Substance Use and HIV Prevention Intervention and Services Research Trials (R34 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2029-07-16",
+          "days_left": 982
+        },
+        "funding": {
+          "display": "Up to $450,000 per award",
+          "floor": null,
+          "ceiling": 450000.0,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": true,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357382",
+        "title": "Navigator Emergency Department Diversion Models for Non-Urgent Mental Health Concerns (R01 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357386",
+        "title": "Navigator Emergency Department Diversion Models for Non-Urgent Mental Health Concerns (R34 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357121",
+        "title": "Environmental Health Sciences Core Centers Program (P30 Clinical Trials Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-04-20",
+          "days_left": 164
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "358552",
+        "title": "Short Courses on Innovative Methodologies and Approaches in the Behavioral and Social Sciences (R25 Clinical Trials Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-04-09",
+          "days_left": 153
+        },
+        "funding": {
+          "display": "Up to $200,000 per award",
+          "floor": null,
+          "ceiling": 200000.0,
+          "estimated_total": 200000.0,
+          "number_of_awards": null,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $200,000. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357423",
+        "title": "Confirmatory Efficacy Clinical Trials of Non-Pharmacological and Pharmacological Interventions for Mental Disorders (R01 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-15",
+          "days_left": 342
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "Confirmatory Efficacy Clinical Trials of Non-Pharmacological Interventions for Mental Disorders (R01 Clinical Trial Required).",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "356236",
+        "title": "Advancing Healthcare for Older Adults from Populations that Experience Health Disparities (R01 - Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357308",
+        "title": "Neuromodulation/Neurostimulation Device Development for Mental Health Applications (R21 Clinical Trial Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357309",
+        "title": "Neuromodulation/Neurostimulation Device Development for Mental Health Applications (R01 Clinical Trial Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "360574",
+        "title": "Silvio O. Conte Centers for Basic Neuroscience or Translational Mental Health Research (P50 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-05-25",
+          "days_left": 565
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "359648",
+        "title": "Resource-Related Research Projects for Development of Models and Related Materials for Studying Human Health and Diseases (R24 Clinical Trials Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-09-28",
+          "days_left": 691
+        },
+        "funding": {
+          "display": "$5,000,000 total program funding",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": 5000000.0,
+          "number_of_awards": 6.0,
+          "reported": true,
+          "note": "Grants.gov lists about 6 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "360554",
+        "title": "NIH Brain Development Cohorts (NBDC) and Population Assessment of Tobacco and Health (PATH) Study Biospecimen Access (X01 Clinical Trial Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2029-04-17",
+          "days_left": 892
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "361754",
+        "title": "Title X Family Planning Services Grants",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-01-11",
+          "days_left": 65
+        },
+        "funding": {
+          "display": "$200,000 – $22,000,000 per award",
+          "floor": 200000.0,
+          "ceiling": 22000000.0,
+          "estimated_total": 257000000.0,
+          "number_of_awards": 90.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $257,000,000 and about 90 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357572",
+        "title": "Interventions to Reduce Sleep Health Disparities (R01 - Clinical Trials Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-09-07",
+          "days_left": 304
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357345",
+        "title": "Utilizing Invasive Recording and Stimulating Opportunities in Humans to Advance Neural Circuitry Understanding of Mental Health Disorders (R21 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Up to $200,000 per award",
+          "floor": null,
+          "ceiling": 200000.0,
+          "estimated_total": 200000.0,
+          "number_of_awards": null,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $200,000. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357346",
+        "title": "Utilizing Invasive Recording and Stimulating Opportunities in Humans to Advance Neural Circuitry Understanding of Mental Health Disorders (R01 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357379",
+        "title": "The Role of Work in Health Disparities in the U.S. (R01 Clinical Trials Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "358967",
+        "title": "Environmental influences on Child Health Outcomes (ECHO) Cohort Data and Biospecimen Access (X01 Clinical Trial Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-03-01",
+          "days_left": 480
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357140",
+        "title": "Ruth L. Kirschstein National Research Service Award (NRSA) Institutional Research Training Grant (Parent T32)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-05-04",
+          "days_left": 544
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "359941",
+        "title": "Assessing the Feasibility of Incorporating Mechanisms in Multi-site Clinical Trials of Mind and Body Interventions on Whole Person Health Restoration (R33 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2029-11-16",
+          "days_left": 1105
+        },
+        "funding": {
+          "display": "Up to $500,000 per award",
+          "floor": null,
+          "ceiling": 500000.0,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": true,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357996",
+        "title": "Ruth L. Kirschstein National Research Service Award (NRSA) Short-Term Institutional Research Training Grant (Parent T35)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-05-07",
+          "days_left": 547
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357426",
+        "title": "Development of Psychosocial Therapeutic and Preventive Interventions for Mental Disorders (R33 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-15",
+          "days_left": 342
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "Development of Psychosocial Therapeutic and Preventive Interventions for Mental Disorders (R33 Clinical Trial Required).",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357427",
+        "title": "Development of Psychosocial Therapeutic and Preventive Interventions for Mental Disorders (R61/R33 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-15",
+          "days_left": 342
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "Development of Psychosocial Therapeutic and Preventive Interventions for Mental Disorders (R61/R33 Clinical Trial Required).",
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "357034",
+        "title": "Laboratories to Optimize Digital Health (R01 Clinical Trial Required)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-01-07",
+          "days_left": 426
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "337086",
+        "title": "Public Health Crisis Response Cooperative Agreement",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-02-11",
+          "days_left": 96
+        },
+        "funding": {
+          "display": "$50,000 – $5,000,000 per award",
+          "floor": 50000.0,
+          "ceiling": 5000000.0,
+          "estimated_total": 500000000.0,
+          "number_of_awards": 113.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $500,000,000 and about 113 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "358229",
+        "title": "National Cooperative Drug/Device Discovery/Development Groups (NCDDG) for the Treatment of Mental Disorders (U01 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-25",
+          "days_left": 352
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "358230",
+        "title": "National Cooperative Drug/Device Discovery/Development Groups (NCDDG) for the Treatment of Mental Disorders (U19 Clinical Trial Optional)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-10-25",
+          "days_left": 352
+        },
+        "funding": {
+          "display": "Not reported",
+          "floor": null,
+          "ceiling": null,
+          "estimated_total": null,
+          "number_of_awards": null,
+          "reported": false,
+          "note": "Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "355722",
+        "title": "Occupational Safety and Health Training Project Grants (T03)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-10-26",
+          "days_left": 719
+        },
+        "funding": {
+          "display": "$50,000 – $550,000 per award",
+          "floor": 50000.0,
+          "ceiling": 550000.0,
+          "estimated_total": 24000000.0,
+          "number_of_awards": 29.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $24,000,000 and about 29 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      },
+      {
+        "id": "359676",
+        "title": "Limited Competition: Stimulating Access to Research in Residency Transition Scholar (StARRTS) (K38 Clinical Trial Not Allowed)",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2028-10-13",
+          "days_left": 706
+        },
+        "funding": {
+          "display": "$2,180,000 – $6,444,000 per award",
+          "floor": 2180000.0,
+          "ceiling": 6444000.0,
+          "estimated_total": 10804000.0,
+          "number_of_awards": 10.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $10,804,000 and about 10 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": null
+      }
+    ],
+    "reasons": {
+      "Not verified as currently open with a closing date": 248,
+      "Direct applicant route is excluded, unlikely, or not checked; no supported alternative route established": 404,
+      "Insufficient specific project-activity evidence": 400,
+      "Special applicant or affiliation route is not established for the selected agency": 20,
+      "Closing date is before the selected threshold": 10,
+      "Western-state program geography requires a supported NC route": 1,
+      "Regional program scope does not support this NC project": 12
+    }
+  },
+  "ncdit-before": {
+    "stats": {
+      "unique_candidates": 444,
+      "actionable_candidates": 444,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 10,
+      "low_evidence": 265,
+      "upcoming": 3,
+      "upcoming_low_evidence": 149,
+      "likely_ineligible": 6,
+      "screened_out": 11,
+      "screened_out_by_reason": {
+        "closed": 8,
+        "not_eligible": 3
+      },
+      "capped_queries": 8,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "rural broadband",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "broadband infrastructure",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "digital equity",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "deploy rural broadband infrastructure",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "data services",
+        "source": "ncdit-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "artificial intelligence",
+        "source": "ncdit-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "digital literacy",
+        "source": "ncdit-3",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "critical infrastructure",
+        "source": "ncdit-4",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [],
+    "reasons": {
+      "Direct applicant route is excluded, unlikely, or not checked; no supported alternative route established": 373,
+      "Not verified as currently open with a closing date": 188,
+      "Insufficient specific project-activity evidence": 443,
+      "Special applicant or affiliation route is not established for the selected agency": 49,
+      "Closing date is before the selected threshold": 8,
+      "Regional program scope does not support this NC project": 28,
+      "Research/development purpose is not established by the proposed implementation project": 5,
+      "Western-state program geography requires a supported NC route": 1
+    }
+  },
+  "deq-final": {
+    "stats": {
+      "unique_candidates": 416,
+      "actionable_candidates": 416,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 41,
+      "low_evidence": 235,
+      "upcoming": 6,
+      "upcoming_low_evidence": 119,
+      "likely_ineligible": 6,
+      "screened_out": 9,
+      "screened_out_by_reason": {
+        "not_eligible": 5,
+        "closed": 4
+      },
+      "capped_queries": 5,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "watershed restoration",
+        "source": "user",
+        "retrieved": 72,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "water quality",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "water monitoring",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "coastal restoration",
+        "source": "user",
+        "retrieved": 93,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "hurricane helene",
+        "source": "deq-2",
+        "retrieved": 14,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "forever chemicals",
+        "source": "deq-3",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "environmental infrastructure",
+        "source": "deq-4",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "community engagement",
+        "source": "deq-5",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [
+      {
+        "id": "364144",
+        "title": "Landscape Scale Restoration Grant Program for Non-Federal Lands",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-01-26",
+          "days_left": 80
+        },
+        "funding": {
+          "display": "$100,000 – $600,000 per award",
+          "floor": 100000.0,
+          "ceiling": 600000.0,
+          "estimated_total": 11340000.0,
+          "number_of_awards": 30.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $11,340,000 and about 30 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": true
+        },
+        "scope_requirement": "Eligible Lands : LSR projects must be conducted on rural non-industrial private forest land, and/or rural state or local government forest land.",
+        "purpose_source": null,
+        "rolling_intake": false
+      },
+      {
+        "id": "363920",
+        "title": "Easement Restoration and Stewardship",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2026-11-19",
+          "days_left": 12
+        },
+        "funding": {
+          "display": "$250,000 – $5,000,000 per award",
+          "floor": 250000.0,
+          "ceiling": 5000000.0,
+          "estimated_total": null,
+          "number_of_awards": 4.0,
+          "reported": true,
+          "note": "Grants.gov lists about 4 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": "The opportunities associated with this NOFO are for lands protected through the Wetland Reserve Easements (WRE) component of the Agricultural Conservation Easement Program (ACEP) and the Floodplain Easement (FPE) component of the Emergency Watershed Protection Program (EWPP).",
+        "purpose_source": null,
+        "rolling_intake": false
+      }
+    ],
+    "reasons": {
+      "Official eligible-location list does not include the proposed North Carolina location": 3,
+      "Confirmed direct-applicant restriction; no supported alternative route established": 6,
+      "Special applicant or affiliation route is not established for the selected agency": 39,
+      "Regional program scope does not support this NC project": 27,
+      "Western-state program geography requires a supported NC route": 2,
+      "Likely direct-applicant restriction (interpretation); alternative route unverified": 7,
+      "Official details not inspected: detail-shortlist cap; eligibility and project fit remain unassessed": 336,
+      "Insufficient specific project-activity evidence": 67,
+      "Research/clinical-study funding purpose does not support the proposed service delivery or implementation scope": 134,
+      "Not verified as currently open with a closing date": 144,
+      "Research/development purpose is not established by the proposed implementation project": 3,
+      "Closing date is before the selected threshold": 4
+    }
+  },
+  "ncdot-final": {
+    "stats": {
+      "unique_candidates": 458,
+      "actionable_candidates": 458,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 5,
+      "low_evidence": 312,
+      "upcoming": 5,
+      "upcoming_low_evidence": 123,
+      "likely_ineligible": 5,
+      "screened_out": 8,
+      "screened_out_by_reason": {
+        "closed": 4,
+        "not_eligible": 4
+      },
+      "capped_queries": 7,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "transportation resilience",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "culvert replacement",
+        "source": "user",
+        "retrieved": 90,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "flood mitigation",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "resilient roads",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "transportation infrastructure",
+        "source": "ncdot-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "highway safety",
+        "source": "ncdot-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "disaster recovery",
+        "source": "ncdot-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "serious injuries",
+        "source": "ncdot-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [
+      {
+        "id": "363699",
+        "title": "F26AS00105 National Fish Passage Program",
+        "deadline": {
+          "status": "open",
+          "rule": "Posted and accepting applications",
+          "close_date": "2027-04-30",
+          "days_left": 174
+        },
+        "funding": {
+          "display": "Up to $1,000,000 per award",
+          "floor": null,
+          "ceiling": 1000000.0,
+          "estimated_total": 15000000.0,
+          "number_of_awards": 100.0,
+          "reported": true,
+          "note": "Grants.gov lists estimated total program funding $15,000,000 and about 100 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": false
+        },
+        "scope_requirement": null,
+        "purpose_source": null,
+        "rolling_intake": false
+      }
+    ],
+    "reasons": {
+      "Not verified as currently open with a closing date": 153,
+      "Official details not inspected: detail-shortlist cap; eligibility and project fit remain unassessed": 378,
+      "Closing date is before the selected threshold": 4,
+      "Confirmed direct-applicant restriction; no supported alternative route established": 8,
+      "Insufficient specific project-activity evidence": 78,
+      "Research/clinical-study funding purpose does not support the proposed service delivery or implementation scope": 123,
+      "Special applicant or affiliation route is not established for the selected agency": 32,
+      "Regional program scope does not support this NC project": 18,
+      "Research/development purpose is not established by the proposed implementation project": 6,
+      "Likely direct-applicant restriction (interpretation); alternative route unverified": 5,
+      "Western-state program geography requires a supported NC route": 1
+    }
+  },
+  "ncdhhs-final": {
+    "stats": {
+      "unique_candidates": 408,
+      "actionable_candidates": 408,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 34,
+      "low_evidence": 164,
+      "upcoming": 25,
+      "upcoming_low_evidence": 160,
+      "likely_ineligible": 2,
+      "screened_out": 23,
+      "screened_out_by_reason": {
+        "closed": 21,
+        "not_eligible": 2
+      },
+      "capped_queries": 7,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "rural mental health",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "behavioral health services",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "community mental health",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "telehealth",
+        "source": "user",
+        "retrieved": 11,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "access to health",
+        "source": "ncdhhs-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "mental health",
+        "source": "ncdhhs-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "health care",
+        "source": "ncdhhs-3",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "career pathways",
+        "source": "ncdhhs-4",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [],
+    "reasons": {
+      "Insufficient specific project-activity evidence": 63,
+      "Research/clinical-study funding purpose does not support the proposed service delivery or implementation scope": 162,
+      "Not verified as currently open with a closing date": 215,
+      "Closing date is before the selected threshold": 21,
+      "Official details not inspected: detail-shortlist cap; eligibility and project fit remain unassessed": 328,
+      "Likely direct-applicant restriction (interpretation); alternative route unverified": 2,
+      "Confirmed direct-applicant restriction; no supported alternative route established": 3,
+      "Special applicant or affiliation route is not established for the selected agency": 12,
+      "Regional program scope does not support this NC project": 10
+    }
+  },
+  "ncdit-final": {
+    "stats": {
+      "unique_candidates": 448,
+      "actionable_candidates": 448,
+      "details_loaded": 80,
+      "details_considered": 80,
+      "priority": 13,
+      "low_evidence": 274,
+      "upcoming": 3,
+      "upcoming_low_evidence": 145,
+      "likely_ineligible": 7,
+      "screened_out": 6,
+      "screened_out_by_reason": {
+        "not_eligible": 2,
+        "closed": 4
+      },
+      "capped_queries": 6,
+      "possibly_incomplete": true
+    },
+    "queries": [
+      {
+        "query": "rural broadband",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "ReConnect",
+        "source": "user",
+        "retrieved": 5,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "broadband deployment",
+        "source": "user",
+        "retrieved": 87,
+        "cap_reached": false,
+        "error": null
+      },
+      {
+        "query": "broadband infrastructure",
+        "source": "user",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "data services",
+        "source": "ncdit-1",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "artificial intelligence",
+        "source": "ncdit-2",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "digital literacy",
+        "source": "ncdit-3",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      },
+      {
+        "query": "critical infrastructure",
+        "source": "ncdit-4",
+        "retrieved": 100,
+        "cap_reached": true,
+        "error": null
+      }
+    ],
+    "potentials": [
+      {
+        "id": "346815",
+        "title": "FY 2025 EDA Public Works and Economic Adjustment Assistance Programs",
+        "deadline": {
+          "status": "unknown",
+          "rule": "Posted, but no closing date is listed",
+          "close_date": null,
+          "days_left": null
+        },
+        "funding": {
+          "display": "$100,000 – $30,000,000 per award",
+          "floor": 100000.0,
+          "ceiling": 30000000.0,
+          "estimated_total": null,
+          "number_of_awards": 3000.0,
+          "reported": true,
+          "note": "Grants.gov lists about 3,000 award(s) expected. Award ceilings are maximums, not guaranteed amounts.",
+          "cost_sharing": true
+        },
+        "scope_requirement": "Rolling intake is subject to funds and notice changes, not a confirmed future closing date. Verify current availability, location conditions and eligible project costs.",
+        "purpose_source": {
+          "source_id": "attachment-346815-351916",
+          "url": "https://apply07.grants.gov/grantsws/rest/opportunity/att/download/351916",
+          "quote": "expansion or enhancement of public facilities with higher quality fiber optic cables and \ntelecommunications infrastructure and broadband infrastructure deployment.",
+          "version": "32dd1a457529000ebb1cff7635730612ecc08e3c3fcbe7cb198a8cadab7ed75d",
+          "scope": "Official notice excerpt screening only; not Sol verified"
+        },
+        "rolling_intake": true
+      }
+    ],
+    "reasons": {
+      "Likely direct-applicant restriction (interpretation); alternative route unverified": 7,
+      "Not verified as currently open with a closing date": 180,
+      "Official details not inspected: detail-shortlist cap; eligibility and project fit remain unassessed": 368,
+      "Research/clinical-study funding purpose does not support the proposed service delivery or implementation scope": 96,
+      "Insufficient specific project-activity evidence": 78,
+      "Special applicant or affiliation route is not established for the selected agency": 41,
+      "Regional program scope does not support this NC project": 25,
+      "Research/development purpose is not established by the proposed implementation project": 6,
+      "Confirmed direct-applicant restriction; no supported alternative route established": 2,
+      "Closing date is before the selected threshold": 4
+    }
+  }
+}

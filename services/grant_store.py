@@ -23,7 +23,7 @@ class LocalGrantStore:
     """Atomic local JSON store for development."""
 
     def __init__(self, path: str | os.PathLike | None = None):
-        self.path = Path(path or ".grantscope/grants.json")
+        self.path = Path(path) if path else Path(os.environ.get("GRANTSCOPE_DATA_DIR", ".grantscope")) / "grants.json"
 
     def _read(self) -> dict[str, dict]:
         if not self.path.exists():

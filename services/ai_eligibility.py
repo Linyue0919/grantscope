@@ -12,7 +12,7 @@ import re
 
 from services.ai_matching import AzureJSONEvaluator, _norm
 
-PROMPT_VERSION = "elig-v1"
+PROMPT_VERSION = "elig-v2"
 MAX_NOTES_CHARS = 6000
 VERDICTS = {"likely_eligible", "likely_ineligible", "uncertain"}
 
@@ -23,7 +23,7 @@ SYSTEM_PROMPT = (
     "official text provided. Respond with JSON only:\n"
     '{"verdict": "likely_eligible" | "likely_ineligible" | "uncertain", '
     '"reasoning": "<one or two sentences, at most 50 words>", '
-    '"quote": "<exact words copied from the official text that support the verdict, 5-40 words>", '
+    '"quote": "<exact words copied from the official text that support the verdict, a complete applicant-category label or 5-40 words>", '
     '"listed_applicant_categories": ["<categories the text says are eligible>"], '
     '"to_verify": ["<up to 3 short, specific items the agency should confirm>"]}\n'
     "Rules: State agencies are covered only by 'State governments' (or equivalent wording such as 'States' "
@@ -64,9 +64,11 @@ def validate_eligibility_response(raw, details):
         return None, ["Missing reasoning."]
     if re.search(r"\bguarantee", reasoning, re.IGNORECASE) and not re.search(r"not (?:a )?guarantee", reasoning, re.I):
         return None, ["Reasoning implies guaranteed eligibility."]
-    quote = str(data.get("quote") or "").strip().strip('"“”')
+    quote = str(data.get("quote") or "").strip().strip("\"“”'‘’")
     types, notes = official_text(details)
-    if len(quote.split()) < 3:
+    exact_category = any(_norm(quote) == _norm(t.get("description", ""))
+                         for t in (details or {}).get("applicant_types") or [])
+    if not quote or (len(quote.split()) < 3 and not exact_category):
         return None, ["Quote too short or missing."]
     if _norm(quote) in _norm(notes):
         source = "Grants.gov eligibility notes"

@@ -37,8 +37,8 @@ def citation_checks(value, packet):
         # other eligibility/permission predicates and exact-source checks intact.
         permission_statement = re.sub(r'\beligible total costs\b', 'total costs', statement, flags=re.I)
         material_inference = (claim['kind'] == 'reasoned_inference'
-                              and re.search(r'\b(?:eligible|qualifies|ready|allowable|suitable|permitted|funded|can apply|meets requirements)\b', permission_statement, re.I)
-                              and not re.search(r'\b(?:may|might|could|whether|unconfirmed|unknown|not|unresolved|conditional)\b', statement, re.I))
+                              and re.search(r'\b(?:(?:is|are|will be|can be)\s+(?:(?:directly|fully|clearly)\s+)?(?:eligible|ready|allowable|suitable|permitted|funded)|can apply|qualif(?:y|ies)|meets requirements)\b', permission_statement, re.I)
+                              and not re.search(r'\b(?:may|might|could|whether|unconfirmed|unknown|not|unresolved|conditional|cannot (?:determine|confirm|establish|verify|assess|conclude))\b', statement, re.I))
         if (assertion and not explicit_unknown) or material_inference:
             result['category'] = 'unsupported_material_assertion'
         elif src is None:

@@ -43,15 +43,7 @@ def _shared_ai_cache():
 
 def _ai_config():
     """Azure OpenAI settings from environment variables, then Streamlit secrets."""
-    merged = dict(os.environ)
-    try:
-        for key in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT",
-                    "AZURE_OPENAI_API_VERSION"):
-            if key in st.secrets and not merged.get(key):
-                merged[key] = st.secrets[key]
-    except Exception:  # noqa: BLE001 - no secrets file is normal
-        pass
-    return load_ai_config(merged)
+    return load_ai_config(st.secrets)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

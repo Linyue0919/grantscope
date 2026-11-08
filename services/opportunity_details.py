@@ -113,6 +113,7 @@ def parse_details(payload, opportunity_id):
         "eligibility_text": strip_html(section.get("applicantEligibilityDesc")),
         "description": strip_html(description),
         "close_date_text": str(close_text).strip() if close_text else None,
+        "deadline_note": strip_html(section.get("responseDateDesc")),
         "funding_instruments": [i for i in instruments if i],
         "attachments": attachments,
         "source_url": grant_url(opportunity_id),

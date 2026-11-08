@@ -196,6 +196,10 @@ def test_streamlit_multi_grant_dynamic_research_and_save_without_a_live_call(tmp
 
 
 def test_real_recorded_opportunities_remain_reviewable_when_notices_unavailable():
+    from pathlib import Path
+    import pytest
+    if not (Path(__file__).resolve().parents[1]/"docs/ai-research-benchmark/evidence/362755.json").exists():
+        pytest.skip("Optional archived official evidence is not distributed")
     root=Path(__file__).resolve().parents[1]/'docs/ai-research-benchmark/evidence'
     seeds=[];frozen={}
     for oid in ['362755','362843']:

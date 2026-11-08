@@ -330,13 +330,17 @@ def evaluate_grant(hit, profile, details, settings, today, ai_result=None, annou
         reasons.append(("below_min_award",
                         f"Award ceiling ${funding['ceiling']:,.0f} is below your ${settings.min_award:,.0f} minimum"))
 
+    # A validated zero-fit AI result must not become a priority recommendation
+    # merely because the keyword half of the blend is positive. Retain for review.
+    ai_zero_fit = bool(ai_result and ai_result.get("status") == "ok" and ai_result.get("score") == 0)
+    has_fit = bool(relevance["fit_score"]) and not ai_zero_fit
     if reasons:
         section = SCREENED_OUT
     elif eligibility["status"] == LIKELY_INELIGIBLE:
         section = LIKELY_INELIGIBLE_SECTION
     elif deadline["status"] == FORECASTED:
-        section = UPCOMING if relevance["fit_score"] else UPCOMING_LOW
-    elif relevance["fit_score"]:
+        section = UPCOMING if has_fit else UPCOMING_LOW
+    elif has_fit:
         section = PRIORITY
     else:
         section = LOW_EVIDENCE

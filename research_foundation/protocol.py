@@ -146,3 +146,14 @@ IDs in the rationale and actions where relevant. Preserve counterevidence and
 conditions; claim references do not establish legal eligibility or entailment.'''
 
 ANALYSIS_INSTRUCTION += "\nUser funding_needed_usd is a preference, not an award fact. Compare official floors, ceilings, match and activity limits; explain partial funding or unavailable amounts. earliest_closing_date is the earliest acceptable application close, never a readiness deadline. as_of is the separate current-date reference. Report contradictions between posted status and expired deadlines. A potential partnership is not an established permitted applicant route."
+
+ANALYSIS_INSTRUCTION += """
+Keep each claim atomic: its quotation must support its entire factual content.
+Separate award-range arithmetic from eligibility, allowable-cost and readiness claims;
+a quote giving an award range does not establish which project costs are allowable.
+Record an explicit quoted program rule as a confirmed_fact, not an unconditional
+reasoned permission inference. A reasoned inference about this applicant or project's
+eligibility, allowability or readiness must retain explicit uncertainty. Do not state
+that the applicant is eligible or the project qualifies merely because a category or
+funding range matches. Use separate unresolved requirements for missing project facts.
+"""

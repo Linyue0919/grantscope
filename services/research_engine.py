@@ -219,6 +219,11 @@ def run_research(review,request_factory,provider,*,budget=None,evidence_client=N
                 return value
             if reused_analysis:
                 p.validate_analysis(reused_analysis,packet);analysis=reused_analysis;record['analysis_reused']=True
+                remember=getattr(provider,'remember_prompt_usage',None)
+                if callable(remember):
+                    for old_call in prior.get('calls',[]):
+                        if old_call.get('stage')==1 and old_call.get('status')=='completed':
+                            remember(packet,(old_call.get('usage') or {}).get('prompt_tokens'))
             else:analysis=call(1)
             record['analysis']=analysis
             persist()
@@ -257,28 +262,45 @@ class AzureSolProvider:
         parsed=urlparse(self.endpoint)
         if parsed.scheme!='https' or not (parsed.hostname or '').endswith('.openai.azure.com') or parsed.path:
             raise ValueError('Invalid Azure resource endpoint')
+        self.deployment=config.get('AZURE_OPENAI_RESEARCH_DEPLOYMENT','grantscope-bench-gpt61sol-v1')
+        self.expected_model=config.get('AZURE_OPENAI_RESEARCH_MODEL_VERSION','gpt-6.1-sol-2026-09-29')
         self.key=str(config.get('AZURE_OPENAI_API_KEY',''))
         if not self.key:raise ValueError('Azure credential unavailable')
-        self.session=session or requests.Session();self.last_start=0
+        self.session=session or requests.Session();self.last_start=0;self.packet_prompt_tokens={}
         self.tpm=max(200000,int(config.get('RESEARCH_TPM',200000)));self.window=[];self.blocked_until=0
 
+    def remember_prompt_usage(self,packet,prompt_tokens):
+        # Actual Azure stage-one usage bounds the unchanged evidence packet. New
+        # decision content is still bounded by UTF-8 bytes (at most one token/byte).
+        if isinstance(prompt_tokens,int) and 0 < prompt_tokens <= INPUT_TOKEN_BOUND:
+            self.packet_prompt_tokens[fingerprint(packet)]=prompt_tokens
+
     def complete(self,packet,stage,analysis=None):
-        payload={'model':'grantscope-bench-gpt61sol-v1','messages':[{'role':'system','content':p.ANALYSIS_INSTRUCTION if stage==1 else p.DECISION_INSTRUCTION},
+        payload={'model':self.deployment,'messages':[{'role':'system','content':p.ANALYSIS_INSTRUCTION if stage==1 else p.DECISION_INSTRUCTION},
             {'role':'user','content':json.dumps({'original_evidence_packet':packet,**({'own_validated_analysis':analysis,'validated_claim_registry':p.claim_registry(analysis)} if stage==2 else {})},ensure_ascii=False)}],
             'reasoning_effort':'medium','max_completion_tokens':25000 if stage==1 else 8000,
             'response_format':{'type':'json_schema','json_schema':{'name':'grant_analysis' if stage==1 else 'grant_decision','strict':True,
                 'schema':p.ANALYSIS_SCHEMA if stage==1 else p.DECISION_SCHEMA}}}
-        if len(json.dumps(payload,ensure_ascii=False).encode())+4096>INPUT_TOKEN_BOUND:
-            return {'error':'Input exceeds conservative budget; evidence not truncated','fatal':False}
+        input_bound=len(json.dumps(payload,ensure_ascii=False).encode())+4096
+        prior_tokens=self.packet_prompt_tokens.get(fingerprint(packet))
+        if stage==2 and prior_tokens:
+            # Count the unchanged packet once using recorded Azure tokens; bound
+            # every new instruction, schema, analysis and registry byte separately.
+            residual={**payload,'messages':[payload['messages'][0],
+                {'role':'user','content':json.dumps({'original_evidence_packet':{},
+                    'own_validated_analysis':analysis,'validated_claim_registry':p.claim_registry(analysis)},ensure_ascii=False)}]}
+            input_bound=prior_tokens+len(json.dumps(residual,ensure_ascii=False).encode())+4096
+        if input_bound>INPUT_TOKEN_BOUND:
+            return {'error':'Input exceeds conservative budget; evidence not truncated','fatal':False,'input_token_upper_bound':input_bound}
         # Deployment TPM and observed usage control pacing; no unconditional minute sleep.
         now=time.perf_counter();self.window=[(t,n) for t,n in self.window if now-t<60]
-        estimate=len(json.dumps(payload,ensure_ascii=False).encode())+payload['max_completion_tokens']
+        estimate=input_bound+payload['max_completion_tokens']
         wait=max(0,self.blocked_until-now)
         if self.window and sum(n for _,n in self.window)+estimate>self.tpm:
             wait=max(wait,60-(now-self.window[0][0]))
         if wait:time.sleep(wait)
         start=time.perf_counter();self.last_start=start
-        result={'request_sent':False,'stage':stage,'deployment':payload['model'],'started_at':datetime.now(timezone.utc).isoformat(),'pacing_seconds':wait}
+        result={'request_sent':False,'input_token_upper_bound':input_bound,'stage':stage,'deployment':payload['model'],'started_at':datetime.now(timezone.utc).isoformat(),'pacing_seconds':wait}
         try:
             result['request_sent']=True
             r=self.session.post(self.endpoint+'/openai/v1/chat/completions',json=payload,
@@ -293,10 +315,12 @@ class AzureSolProvider:
                         self.blocked_until=time.perf_counter()+min(120,max(0,float(reset)))
                 except (ValueError,TypeError):pass
             if r.status_code!=200:raise ResearchAbort('Azure HTTP '+str(r.status_code))
-            if envelope.get('model')!='gpt-6.1-sol-2026-09-29':raise ResearchAbort('Unexpected model version')
+            if envelope.get('model')!=self.expected_model:raise ResearchAbort('Unexpected model version')
             usage=result['usage'];total=usage['prompt_tokens'];out=usage['completion_tokens'];detail=usage.get('prompt_tokens_details') or {}
             reads=detail.get('cached_tokens',0);writes=detail.get('cache_write_tokens',0)
             if any(not isinstance(v,int) or v<0 for v in [total,out,reads,writes]) or reads+writes>total:raise ResearchAbort('Ambiguous billing telemetry')
+            if total>INPUT_TOKEN_BOUND:raise ResearchAbort('Input token reservation exceeded')
+            if stage==1:self.remember_prompt_usage(packet,total)
             self.window.append((start,total+out))
             cost=((total-reads-writes)*2+reads*.1+writes*2.5+out*10)/1e6;result['estimated_cost_usd']=cost
             if cost>(INPUT_TOKEN_BOUND*2.5+(25000 if stage==1 else 8000)*10)/1e6:raise ResearchAbort('Cost exceeded reservation')
@@ -312,7 +336,7 @@ class AzureSolProvider:
 
 class ResearchStore:
     """Separate versioned research cache; never edits legacy recommendation caches."""
-    def __init__(self,root='.grantscope/research_v1'):self.root=Path(root)
+    def __init__(self,root=None):self.root=Path(root) if root else Path(os.environ.get('GRANTSCOPE_DATA_DIR','.grantscope'))/'research_v1'
     def load(self,scope):
         if len(scope)!=64 or any(c not in '0123456789abcdef' for c in scope):raise ValueError('Invalid research scope')
         path=self.root/(scope+'.json')
@@ -355,22 +379,19 @@ def request_for_candidate(agency,project,candidate,*,mode='project_first',profil
         profile.get('funding_needed_usd'),profile.get('earliest_closing_date'))
 
 
-def configured_provider(config):
-    """Use an existing CLI Entra session when server-configured; never log tokens."""
-    import subprocess
-    cli=os.environ.get('GRANTSCOPE_AZURE_CLI')
-    if not cli:return AzureSolProvider(config)
+def configured_provider(config=None):
+    """Environment-first settings; real AI only runs after the explicit research action."""
+    from services.azure_config import settings, auth_mode, token_provider
+    config=settings(config)
+    if auth_mode(config)=='api_key':return AzureSolProvider(config)
+    get_token=token_provider(config)
     class EntraSession:
         def __init__(self):self.session=requests.Session()
         def post(self,url,**kwargs):
-            result=subprocess.run([cli,'account','get-access-token','--resource','https://cognitiveservices.azure.com/',
-                '--query','accessToken','-o','tsv','--only-show-errors'],capture_output=True,text=True,timeout=60)
-            if result.returncode or not result.stdout.strip():raise ResearchAbort('Azure interactive authentication required')
-            token=result.stdout.strip()
+            token=get_token()
             kwargs['headers']={k:v for k,v in kwargs.get('headers',{}).items() if k.lower()!='api-key'}
             kwargs['headers']['Authorization']='Bearer '+token
             response=self.session.post(url,**kwargs)
             response._content=response.content.replace(token.encode(),b'[REDACTED]')
             return response
-    return AzureSolProvider({'AZURE_OPENAI_ENDPOINT':os.environ.get('GRANTSCOPE_AZURE_ENDPOINT','https://grantscope-ai-team07.openai.azure.com'),
-        'AZURE_OPENAI_API_KEY':'UNUSED_ENTRA_AUTH_PLACEHOLDER'},session=EntraSession())
+    return AzureSolProvider(dict(config,AZURE_OPENAI_API_KEY='ENTRA_AUTH_NOT_A_KEY'),session=EntraSession())

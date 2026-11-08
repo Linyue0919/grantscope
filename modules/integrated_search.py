@@ -9,6 +9,7 @@ from services.agency_profiles import resolve_agency_name
 from services.grants_api import get_grants
 from services.opportunity_details import fetch_opportunity_details
 from services.integration_search import search_potential_matches,research_one_candidate
+from services.official_evidence import OfficialEvidenceClient
 from services.research_engine import configured_provider,ResearchStore,fingerprint,ResearchState
 from services.grant_store import LocalGrantStore
 from modules.search_research import save_research_record
@@ -33,17 +34,17 @@ def show_search_screening():
         with st.spinner('Screening live opportunities against your project and official requirements…'):
             try:
                 st.session_state[key]=search_potential_matches(agency,project,amount,threshold,search_fn=get_grants,
-                    details_fn=fetch_opportunity_details,today=today)
+                    details_fn=fetch_opportunity_details,today=today,notice_fn=OfficialEvidenceClient(max_documents=2).fetch)
             except Exception:
                 st.error('Official opportunity screening could not finish. No matches are being invented.');return
     result=st.session_state.get(key)
     if not result:return
     potentials=result['potentials'];store=LocalGrantStore()
     st.subheader('Potential Matches')
-    st.caption('Project-specific screening leads from official summaries — not verified recommendations. Full notice, applicant conditions and preparation requirements remain to be researched. No AI calls occur on Search.')
+    st.caption('Project-specific screening leads from official summaries — not verified recommendations. Full notice, applicant conditions and preparation requirements remain to be researched. Screening makes no AI calls; Deep Research uses paid Azure AI.')
     if not potentials:st.info('No sufficiently relevant, open potential matches passed screening. This is a bounded search, not proof that no funding exists.')
     deep=st.session_state.setdefault(key+'_deep',{})
-    cache=ResearchStore(os.environ.get('GRANTSCOPE_RESEARCH_CACHE','.grantscope/research_v1'))
+    cache=ResearchStore(os.environ.get('GRANTSCOPE_RESEARCH_CACHE'))
     rejected={oid for oid,r in deep.items() if r.get('state')==ResearchState.RESEARCHED_AND_VALIDATED.value and
               display_category(r) not in {'Reviewed and promising','Conditional — needs verification'}}
     visible=[r for r in potentials if r['id'] not in rejected]
@@ -55,11 +56,11 @@ def show_search_screening():
             render_card(research,agency,project,store,key[-16:]);continue
         with st.container(border=True):
             st.subheader(record['title']);st.write('**Potential Match — full research incomplete**')
-            st.caption(f"{record['federal_agency']} · Opportunity {oid} · Posted · Closes {record['deadline']['close_date']}")
+            st.caption(f"{record['federal_agency']} · Opportunity {oid} · Posted · Closes {record['deadline']['close_date'] or 'No fixed deadline; rolling availability needs verification'}")
             st.write('**Can we apply?** '+record['eligibility']['label'])
             activities=', '.join(m['activity'] for m in record['project_fit']['matches'])
             st.write('**Should we apply?** Official summary contains project activity evidence: '+activities+'. Allowable activities still need NOFO verification.')
-            st.write('**Can we act in time?** '+record['urgency']['label']+'. Intermediate deadlines and preparation time are not yet verified.')
+            st.write('**Can we act in time?** '+('Rolling intake: confirm funds and current intake; no future closing date is established.' if record.get('rolling_intake') else record['urgency']['label']+'. Intermediate deadlines and preparation time are not yet verified.'))
             st.caption('Official funding: '+record['funding']['display'])
             if record['funding_preference_note']:st.caption(record['funding_preference_note'])
             st.write('**Key concern:** '+(record.get('scope_requirement') or record['eligibility']['reasoning']))
@@ -69,15 +70,20 @@ def show_search_screening():
                 st.write(record['project_fit']['basis']);st.write(record['eligibility']['reasoning'])
                 if record['eligibility'].get('quote'):st.text(record['eligibility']['quote'])
                 st.text((result['details'].get(oid) or {}).get('description',''))
+                if record.get('purpose_source'):
+                    st.text(record['purpose_source']['quote']);st.link_button('Official notice — screened activity evidence',record['purpose_source']['url'])
+                if record.get('rolling_intake'):st.text((result['details'].get(oid) or {}).get('deadline_note',''))
                 st.caption('Agency strategic fit is separate from project fit and is a heuristic, not an AI recommendation.')
                 for goal in record['relevance'].get('matched_goals',[]):
                     st.text(goal['quote']);st.link_button('Official agency plan',goal['plan_url']+'#page='+str(goal['page']))
                 for gap in record['data_gaps']:st.caption(gap)
             st.link_button('Official opportunity',record['source_url'])
-            if st.button('Deep Research',key='screened_deep_'+oid+'_'+key[-16:],disabled=bool(research)):
+            research_label='Retry Deep Research' if research and research.get('state')==ResearchState.RESEARCH_FAILED.value else 'Resume Deep Research' if research else 'Deep Research'
+            if st.button(research_label,key='screened_deep_'+oid+'_'+key[-16:],disabled=bool(research and research.get('inflight_stage'))):
                 try:
                     with st.spinner('Reading official notices and checking this opportunity…'):
-                        run=research_one_candidate(result,oid,configured_provider(st.secrets),cache=cache)
+                        run=research_one_candidate(result,oid,configured_provider(st.secrets),cache=cache,
+                            retry_failed=bool(research and research.get('state')==ResearchState.RESEARCH_FAILED.value))
                     deep.update(run['records']);st.rerun()
                 except Exception:
                     st.warning('Deep research could not start safely. No verified result is being claimed.')

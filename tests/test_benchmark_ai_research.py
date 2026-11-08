@@ -16,6 +16,8 @@ SPEC.loader.exec_module(b)
 
 
 def manifest():
+    if not (b.DATA / 'manifest.json').exists():
+        pytest.skip('Optional archived benchmark evidence is not distributed')
     return json.loads((b.DATA / 'manifest.json').read_text())
 
 
@@ -132,6 +134,8 @@ def test_usage_and_raw_output_survive_validator_rejection():
 
 
 def pilot_manifest():
+    if not (b.DATA / "pilot" / "manifest.json").exists():
+        pytest.skip("Optional private pilot evidence is not distributed")
     return json.loads((b.DATA / 'pilot/manifest.json').read_text())
 
 

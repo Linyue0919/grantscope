@@ -42,13 +42,17 @@ class AIUnavailable(RuntimeError):
 
 def load_ai_config(source=None):
     """Read configuration from a mapping (default: environment). None if incomplete."""
-    source = os.environ if source is None else source
+    from services.azure_config import settings, auth_mode
+    source = settings(source)
+    mode = auth_mode(source)
     endpoint = str(source.get("AZURE_OPENAI_ENDPOINT") or "").strip()
     api_key = str(source.get("AZURE_OPENAI_API_KEY") or "").strip()
-    if not endpoint or not api_key:
+    if not endpoint or (mode == "api_key" and not api_key):
         return None
     return {
         "endpoint": endpoint,
+        "auth_mode": mode,
+        "auth_settings": source,
         "api_key": api_key,
         "deployment": str(source.get("AZURE_OPENAI_DEPLOYMENT") or DEFAULT_DEPLOYMENT).strip(),
         "api_version": str(source.get("AZURE_OPENAI_API_VERSION") or DEFAULT_API_VERSION).strip(),
@@ -165,8 +169,12 @@ class AzureJSONEvaluator:
                 from openai import AzureOpenAI
             except ImportError as exc:
                 raise AIUnavailable("The 'openai' package is not installed.") from exc
-            self._client = AzureOpenAI(azure_endpoint=self.config["endpoint"], api_key=self.config["api_key"],
-                                       api_version=self.config["api_version"], max_retries=1)
+            auth = {"api_key": self.config["api_key"]}
+            if self.config.get("auth_mode", "api_key") != "api_key":
+                from services.azure_config import token_provider
+                auth = {"azure_ad_token_provider": token_provider(self.config["auth_settings"])}
+            self._client = AzureOpenAI(azure_endpoint=self.config["endpoint"], **auth,
+                                       api_version=self.config["api_version"], max_retries=0)
         return self._client
 
     def complete_json(self, system, user, max_tokens=400):

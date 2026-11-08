@@ -215,6 +215,15 @@ def assess_eligibility(details, profile, title="", source_url=None):
         checks.append({"item": "'Only' restriction", "detail": parsed["only"][0], "status": "verify"})
 
     # 1. Confirmed restrictions.
+    tribal_requirement = re.search(
+        r"\bapplicants will meet all (?:the )?following eligibility requirements\s*:\s*"
+        r"the tribe must be one of the following federally recognized tribes\b", notes, re.I)
+    if (tribal_requirement and categories == ["State governments"] and not type_listed
+            and not unrestricted and not parsed["state_positive"] and not state_in_list):
+        return _result(INELIGIBLE, "confirmed", "eligibility_notes",
+                       "Official notes require the direct applicant to be one of the named federally recognized tribes; "
+                       "an NC state agency is not that direct applicant. A partner role is not established.",
+                       tribal_requirement.group(0), False, NOTES, checks=checks, **common)
     if parsed["state_exclusion"]:
         q, t = parsed["state_exclusion"]
         return _result(INELIGIBLE, "confirmed", "eligibility_notes",

@@ -1,5 +1,6 @@
 """Four-call authorization scope exercised offline only."""
 import argparse
+import pytest
 import importlib
 import io
 import json
@@ -15,6 +16,8 @@ def load(monkeypatch):
 
 
 def test_smoke_scope_and_four_mock_calls_without_invented_labels(tmp_path, monkeypatch):
+    if not (Path(__file__).resolve().parents[1]/"docs/ai-research-benchmark/pilot/manifest.json").exists():
+        pytest.skip("Optional private pilot evidence is not distributed")
     s = load(monkeypatch); b = s.b; manifest = s.smoke_manifest()
     report = b.plan(manifest)
     assert report['max_calls'] == 4 and report['reference_price_cost_ceiling_usd'] == 3.12

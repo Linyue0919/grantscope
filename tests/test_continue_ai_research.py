@@ -8,6 +8,8 @@ import pytest
 
 
 def setup_case(tmp_path,monkeypatch):
+    if not (Path(__file__).resolve().parents[1]/"docs/ai-research-benchmark/pilot/manifest.json").exists():
+        pytest.skip("Optional private pilot evidence is not distributed")
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]/'scripts'))
     c=importlib.import_module('continue_ai_research');c.s.configure()
     packet=c.b.load_packet(c.s.smoke_manifest()['cases'][0])

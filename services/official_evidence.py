@@ -76,7 +76,12 @@ class OfficialEvidenceClient:
         selected={k:fields.get(k) for k in ['synopsisDesc','forecastDesc','applicantEligibilityDesc','applicantTypes',
             'fundingActivityCategoryDesc','responseDateStr','responseDateDesc','estApplicationResponseDateStr',
             'awardFloor','awardCeiling','costSharing','costSharingOrMatchingRequirement'] if fields.get(k) is not None}
-        sources=[{'source_id':'grantsgov-'+oid,'url':url,'text':json.dumps({'status':data.get('ost','Unknown'),**{k:plain_official_text(v) if isinstance(v,str) else v for k,v in selected.items()}},ensure_ascii=False),
+        # Applicant categories are an unordered API set; response order varies
+        # between identical fetches and must not trigger repeat paid research.
+        if isinstance(selected.get('applicantTypes'),list):
+            selected['applicantTypes']=sorted(selected['applicantTypes'],
+                key=lambda item:json.dumps(item,sort_keys=True,ensure_ascii=False))
+        sources=[{'source_id':'grantsgov-'+oid,'url':url,'text':json.dumps({'status':data.get('ost','Unknown'),**{k:plain_official_text(v) if isinstance(v,str) else v for k,v in selected.items()}},ensure_ascii=False,sort_keys=True),
                   'retrieved_at':now,'version':now,'kind':'official_summary'}]
         candidates=[]
         # Published API related-document folders, not envelope session/contact data.
