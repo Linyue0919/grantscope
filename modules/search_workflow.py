@@ -11,6 +11,7 @@ from services.search_foundation import discover_project
 from services.search_workflow import shortlist_review,rank_results,display_category,opportunity_timing,qualified_records,run_adaptive_research,record_timing
 from services.research_engine import (ResearchStore,ResearchBudget,run_research,initial_records,
     request_for_candidate,context_key,protocol_hash,configured_provider)
+from services.application_effort import assess_effort
 from modules.search_research import save_research_record
 
 
@@ -39,9 +40,26 @@ def render_card(record,agency,project,store,scope):
             st.write('**Can we apply?** '+apply_text)
             st.write('**Should we apply?** '+should[result['should_apply']])
             st.write('**Can we act in time?** '+timing['readiness'])
+            official_text=' '.join(
+                str(source.get('text') or '')
+                for source in record.get('evidence', {}).get('sources', [])
+                if source.get('kind') == 'official_document'
+            )
+            effort=assess_effort({
+                'description': official_text,
+                'eligibility_text': '',
+                'attachments': [],
+            })
+            st.write('**Application Effort:** '+effort['label'])
+            st.caption(effort['summary'])
+            if effort.get('requirements'):
+                st.caption('Requirements identified: '+', '.join(
+                    item['label'] for item in effort['requirements']
+                ))
             from services.preparation_time import preparation_estimate
             prep=preparation_estimate(record)
-            st.write('**Application Effort:** '+prep['summary'])
+            st.write('**Application preparation:** '+prep['summary'])
+            st.caption('Preparation timing: '+prep['summary'])
             st.caption('Confidence: '+prep['confidence']+' · '+(prep['timing'] if prep['available'] else prep['reason']))
             if prep.get('evidence'):
                 st.caption('Evidence-backed requirements: '+', '.join(
